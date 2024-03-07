@@ -8,24 +8,27 @@
 
 using Rec = void;
 
-enum ReadWriteType { READ = 0, UPDATE , INSERT}; // Read, Updateのみ必要, Insertは最初のwrite?
+enum ReadWriteType { READ = 0, UPDATE, INSERT };  // Read, Updateのみ必要, Insertは最初のwrite?
 
 template <typename Value>
 struct ReadWriteElement {
     using Version = typename Value::Version;
-    ReadWriteElement(Rec* read_rec, Rec* write_rec, ReadWriteType rwt, bool is_new, Value* val)
+    ReadWriteElement(
+        Rec* read_rec, Rec* write_rec, ReadWriteType rwt, bool is_new, Value* val, Version* version)
         : read_rec(read_rec)
         , write_rec(write_rec)
         , rwt(rwt)
         , is_new(is_new)
-        , val(val){};
+        , val(val)
+        , pending_version(version){};
     Rec* read_rec = nullptr;   // nullptr when rwt is INSERT
                                // points to shared record when rwt is READ or UPDATE or DELETE
     Rec* write_rec = nullptr;  // nullptr when rwt is READ, DELETE
                                // points to local record when rwt is UPDATE or INSERT
     ReadWriteType rwt = READ;
-    bool is_new;  // if newly inserted
-    Value* val;   // pointer to index
+    bool is_new;               // if newly inserted
+    Value* val;                // pointer to index
+    Version* pending_version;  // pointer to pending version
 };
 
 

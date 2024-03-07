@@ -4,7 +4,11 @@
 #include <mutex>
 
 #include "protocols/common/readwritelock.hpp"
+#include "protocols/serval/include/region.hpp"
 #include "utils/atomic_wrapper.hpp"
+
+// 前方宣言
+class RowRegion;
 
 class Version {
 public:
@@ -13,6 +17,8 @@ public:
     Version* prev;                 // previous version (mutable: gc)
     void* rec;                     // nullptr if deleted = true (immutable)
     bool deleted;                  // (immutable)
+
+    enum status { PENDING, UPDATED };  // status of version
 
     // update read timestamp if it is less than ts
     void update_readts(uint64_t ts) {
@@ -28,11 +34,11 @@ template <typename Version_>
 struct Value {
     using Version = Version_;
     RWLock rwl;
-    Version* version; // Global Version Chain
-    
+    Version* version;  // Global Version Chain
+
     // For contended versions
-    void* ptr_to_version_array = nullptr; // Pointer to per-core version array
-    uint64_t core_bitmap; 
+    RowRegion* ptr_to_version_array = nullptr;  // Pointer to per-core version array
+    uint64_t core_bitmap;
 
     void initialize() {
         rwl.initialize();
@@ -60,7 +66,7 @@ struct Value {
     }
 };
 
-//per-core version array の classまたはstructを定義する
+// per-core version array の classまたはstructを定義する
 /*
 struct per-core_version array{
     bool is_contended;
