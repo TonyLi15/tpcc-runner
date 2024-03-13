@@ -1,5 +1,7 @@
 #pragma once
 
+#include <unistd.h>  // for gettid()
+
 #include "protocols/serval/include/readwriteset.hpp"
 #include "protocols/serval/include/value.hpp"
 #include "utils/numa.hpp"

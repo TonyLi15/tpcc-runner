@@ -65,13 +65,3 @@ struct Value {
         }
     }
 };
-
-// per-core version array の classまたはstructを定義する
-/*
-struct per-core_version array{
-    bool is_contended;
-    ptr from value;
-    bitmap transaction_bitmap;
-    Version pending_version;
-}
-*/

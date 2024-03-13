@@ -29,6 +29,16 @@ public:
 
     ~Serval() {}
 
+    unsigned int clear_left(unsigned int bitmap, int pos) {
+        unsigned int left_mask = (1 << (pos + 1) - 1);
+        return bitmap & left_mask;
+    }
+
+    unsigned int clear_right(unsigned int bitmap, int pos) {
+        unsigned int right_mask = ~((1U << pos) - 1);
+        return bitmap & right_mask;
+    }
+
     void append_pending_version(TableID table_id, Key key) {
         const Schema& sch = Schema::get_schema();
         Index& idx = Index::get_index();
@@ -96,23 +106,61 @@ FINISH:
 
         // Use val to find visible version
 
-        // __buitin_ffsll(unsigned int): returns the location of 1st "1" from right to left
-        unsigned int latest_core_num = __builtin_ffsll(val->core_bitmap);
+        // load current core's core bitmap
+        uint64_t current_core_bitmap = __atomic_load_n(val->core_bitmap, __ATOMIC_SEQ_CST);
 
-        unsigned int latest_node = numa_node_of_cpu(latest_core_num);
+        // To-Do
+        // 2 ways to calculate my_core_pos -> spot the current core's digit in core
+        // bitmap (1) use my core_id (uint64_t) and convert it to int (2) change my
+        // tx_id (TXID) to integer and then divide by 64 (core num)
+        int my_core_pos;
+
+        // mask the core bitmap
+        unsigned int masked_core_bitmap = clear_right(current_core_bitmap, my_core_pos);
+
+        // __builtin_ffsll(unsigned int): returns the location of 1st "1" from right
+        // __builtin_clzll(unsigned int): returns the number of leading "0" from
+        // left core_bitmap: 00111111 ... 00000011 write occurs in: core2-7, ...
+        int latest_core_pos = 64 - __builtin_ffsll(masked_core_bitmap);
+
+        // no visible version available
+        if (latest_core_pos = 0) {
+            return nullptr;
+        }
+
+        unsigned int latest_node = numa_node_of_cpu(latest_core_pos);
+
+        // locate the current per-core version array
         PerCoreVersionArray* current_version_array =
-            getPerCoreVersionArray(latest_core_num, latest_node);
+            getPerCoreVersionArray(latest_core_pos, latest_node);
 
         uint64_t current_transaction_bitmap = current_version_array.transaction_bitmap;
 
-        // Compare with my tx_id
-        // To-Do: pass my tx_id and locate to transaction bitmap correctly
-        // To-Do: change all bits to 0 if it's larger than my tx_id
+        // To-Do
+        // calculate my_tx_pos -> spot the current tx's digit in tx bitmap
+        // use txid_ to calculate
+        int my_tx_pos;
+
+        // clear_left: change all bits to 0 if it's larger than my tx_id
+        unsigned int latest_transaction_bitmap =
+            current_version_array.clear_left(current_transaction_bitmap, my_tx_pos);
+
         // __builtin_clzll(unsigned int): returns the number of leading "0"
-        unsigned int latest_tx_num = __builtin_clzll(current_transaction_bitmap);
+        unsigned int latest_tx_num = __builtin_clzll(latest_transaction_bitmap);
 
         if (latest_tx_num = 0) {
-            return nullptr;
+AGAIN:
+            // means that the currne per-core version array does not have the visible
+            // version, needs to find from the previous core
+            PerCoreVersionArray* previous_version_array =
+                getPerCoreVersionArray(latest_core_pos - 1, numa_node_of_cpu(latest_core_pos - 1));
+            unsigned int previous_transaction_bitmap = previous_version_array->transaction_bitmap;
+            unsigned int previous_latest_tx_num = __builtin_clzll(previous_transaction_bitmap);
+            if (previous_latest_tx_num = 0) {
+                goto AGAIN
+            };
+            Version* previous_latest_version = previous_version_array.slots[latest_tx_num];
+            return previous_latest_version->rec;
         }
 
         Version* latest_version = current_version_array.slots[latest_tx_num];
@@ -139,7 +187,7 @@ FINISH:
         Value* val = w_iter->second.val;
         Version* pending_version = w_iter->second.pending_version;
         pending_version->status = VersionStatus::UPDATED;
-        // これをバージョンにくっつけたらupsert終わり
+
         Rec* rec = MemoryAllocator::aligned_allocate(record_size);
         pending_version->rec = rec;  // write
         return pending_version->rec;
@@ -278,7 +326,6 @@ FINISH:
 
     uint64_t core_id_;
     TxID txid_;
-    // ここはRowRegion(num_of_thread)で定義すればいいと思います
     std::vector<RowRegion>& regions_;
     uint64_t regions_tail_;
     int cur_ptr_;
@@ -317,7 +364,7 @@ private:
         if (return_value == nullptr) {
             cur_ptr_++;  // move cur_ptr_ to next slot
             my_region->arrays_[core_id_]->append_to_slots(pending_version);
-            return pending version;
+            return pending_version;
         }
 
         // other thread already assigned per-core version region of the data item
