@@ -1,0 +1,36 @@
+Scanning dependencies of target masstree_obj2
+[  8%] Built target gtest
+[ 25%] Built target mimalloc-obj
+[ 31%] Built target mimalloc-static
+[ 46%] Built target masstree_obj1
+[ 72%] Built target mimalloc
+[ 74%] Building C object _deps/build/masstree/CMakeFiles/masstree_obj2.dir/clp.c.o
+[ 77%] Built target gtest_main
+[ 81%] Built target mimalloc-test-stress
+[ 84%] Built target gmock
+[ 87%] Built target mimalloc-test-api
+[ 91%] Built target gmock_main
+[ 91%] Built target masstree_obj2
+[ 93%] Linking CXX static library libmasstree.a
+[ 93%] Built target masstree
+[ 94%] Built target tpccrunner_objlib
+[ 96%] Built target tpccrunner_static
+Scanning dependencies of target ycsb4_serval
+[ 98%] Building CXX object CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o
+In file included from /home/tonyli_15/tpcc-runner/executables/ycsb_serval.cpp:13:
+/home/tonyli_15/tpcc-runner/protocols/serval/include/serval.hpp: In instantiation of ‘uint64_t Serval<Index>::clear_left(uint64_t, int) [with Index = MasstreeIndexes<Value<Version> >; uint64_t = long unsigned int]’:
+/home/tonyli_15/tpcc-runner/protocols/serval/include/serval.hpp:244:28:   required from ‘int Serval<Index>::mask_and_find_latest_pos(uint64_t, int) [with Index = MasstreeIndexes<Value<Version> >; uint64_t = long unsigned int]’
+/home/tonyli_15/tpcc-runner/protocols/serval/include/serval.hpp:115:9:   required from ‘const Rec* Serval<Index>::read(TableID, Serval<Index>::Key) [with Index = MasstreeIndexes<Value<Version> >; Rec = void; TableID = long unsigned int; Serval<Index>::Key = long unsigned int]’
+/home/tonyli_15/tpcc-runner/executables/ycsb_serval.cpp:82:28:   required from ‘void run_tx(int*, ThreadLocalData&, uint32_t, TimeStampManager<Protocol>&, std::vector<Request>&, std::vector<RowRegion>&, uint64_t, uint64_t, uint64_t, uint64_t) [with Protocol = Serval<MasstreeIndexes<Value<Version> > >; uint32_t = unsigned int; uint64_t = long unsigned int]’
+/home/tonyli_15/tpcc-runner/executables/ycsb_serval.cpp:168:29:   required from here
+/home/tonyli_15/tpcc-runner/protocols/serval/include/serval.hpp:210:34: error: suggest parentheses around ‘+’ inside ‘<<’ [-Werror=parentheses]
+  210 |     uint64_t mask = (1ULL << pos + 1) - 1;
+      |                              ~~~~^~~
+/home/tonyli_15/tpcc-runner/executables/ycsb_serval.cpp: In function ‘int main(int, const char**)’:
+/home/tonyli_15/tpcc-runner/executables/ycsb_serval.cpp:166:44: error: ‘regions_end’ may be used uninitialized [-Werror=maybe-uninitialized]
+  166 |         uint64_t regions_end = regions_end + regions_per_core;
+      |                                ~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~
+cc1plus: all warnings being treated as errors
+make[2]: *** [CMakeFiles/ycsb4_serval.dir/build.make:63: CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o] エラー 1
+make[1]: *** [CMakeFiles/Makefile2:282: CMakeFiles/ycsb4_serval.dir/all] エラー 2
+make: *** [Makefile:130: all] エラー 2
