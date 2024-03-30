@@ -11,57 +11,57 @@
 class RowRegion;
 
 class Version {
-public:
-    alignas(64) uint64_t read_ts;  // latest read timestamp (mutable: read)
-    uint64_t write_ts;             // latest write timestamp (immutable)
-    Version* prev;                 // previous version (mutable: gc)
-    void* rec;                     // nullptr if deleted = true (immutable)
-    bool deleted;                  // (immutable)
+ public:
+  enum class VersionStatus { PENDING, UPDATED };  // status of version
 
-    enum status { PENDING, UPDATED };  // status of version
+  alignas(64) uint64_t read_ts;  // latest read timestamp (mutable: read)
+  uint64_t write_ts;             // latest write timestamp (immutable)
+  Version* prev;                 // previous version (mutable: gc)
+  void* rec;                     // nullptr if deleted = true (immutable)
+  bool deleted;                  // (immutable)
+  VersionStatus status;
 
-    // update read timestamp if it is less than ts
-    void update_readts(uint64_t ts) {
-        uint64_t current_readts = load_acquire(read_ts);
-        if (ts < current_readts) return;
-        store_release(read_ts, ts);
-    }
+  // update read timestamp if it is less than ts
+  void update_readts(uint64_t ts) {
+    uint64_t current_readts = load_acquire(read_ts);
+    if (ts < current_readts) return;
+    store_release(read_ts, ts);
+  }
 
-    uint64_t get_readts() { return load_acquire(read_ts); }
+  uint64_t get_readts() { return load_acquire(read_ts); }
 };
 
 template <typename Version_>
 struct Value {
-    using Version = Version_;
-    RWLock rwl;
-    Version* version;  // Global Version Chain
+  using Version = Version_;
+  RWLock rwl;
+  Version* version;  // Global Version Chain
 
-    // For contended versions
-    RowRegion* ptr_to_version_array = nullptr;  // Pointer to per-core version array
-    uint64_t core_bitmap;
+  // For contended versions
+  RowRegion* row_region = nullptr;  // Pointer to per-core version array
+  uint64_t core_bitmap;
 
-    void initialize() {
-        rwl.initialize();
-        version = nullptr;
-    }
+  void initialize() {
+    rwl.initialize();
+    version = nullptr;
+  }
 
-    void lock() { rwl.lock(); }
+  void lock() { rwl.lock(); }
 
-    bool try_lock() { return rwl.try_lock(); }
+  bool try_lock() { return rwl.try_lock(); }
 
-    void unlock() { rwl.unlock(); }
+  void unlock() { rwl.unlock(); }
 
-    bool is_detached_from_tree() { return (version == nullptr); }
+  bool is_detached_from_tree() { return (version == nullptr); }
 
-    bool is_empty() { return (version->deleted && version->prev == nullptr); }
+  bool is_empty() { return (version->deleted && version->prev == nullptr); }
 
-    void trace_version_chain() {
-        Version* temp = version;
-        while (temp != nullptr) {
-            LOG_TRACE(
-                "rs: %lu, ws: %lu, deleted: %s", temp->read_ts, temp->write_ts,
+  void trace_version_chain() {
+    Version* temp = version;
+    while (temp != nullptr) {
+      LOG_TRACE("rs: %lu, ws: %lu, deleted: %s", temp->read_ts, temp->write_ts,
                 temp->deleted ? "true" : "false");
-            temp = temp->prev;
-        }
+      temp = temp->prev;
     }
+  }
 };

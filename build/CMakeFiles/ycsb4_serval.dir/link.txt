@@ -1,0 +1,1 @@
+/usr/bin/c++  -Ofast -DNDEBUG  -Wl,--export-dynamic -rdynamic -pthread CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o  -o bin/ycsb4_serval  -Wl,-rpath,/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc lib/libtpccrunner_static.a _deps/build/mimalloc/libmimalloc.so.1.7 -lpthread /usr/lib/x86_64-linux-gnu/librt.so _deps/build/masstree/libmasstree.a 

@@ -40,8 +40,8 @@ template <typename Protocol>
 void run_tx(
     [[maybe_unused]] int* flag, [[maybe_unused]] ThreadLocalData& t_data, uint32_t worker_id,
     TimeStampManager<Protocol>& tsm, std::vector<Request>& batch_txs,
-    std::vector<RowRegion>& my_regions, uint64_t regions_start, uint64_t regions_end,
-    uint64_t txs_start, uint64_t txs_end) {
+    std::vector<RowRegion>& my_regions, [[maybe_unused]] uint64_t regions_start,
+    [[maybe_unused]] uint64_t regions_end, uint64_t txs_start, uint64_t txs_end) {
     Worker<Protocol> w(tsm, worker_id, 1);
     tsm.set_worker(worker_id, &w);
 
@@ -163,7 +163,8 @@ int main(int argc, const char* argv[]) {
         uint64_t txs_start = i * txs_per_core;
         uint64_t txs_end = (i + 1) * txs_per_core;
         uint64_t regions_start = i * regions_per_core;
-        uint64_t regions_end = regions_end + regions_per_core;
+        uint64_t regions_end = 0;
+        regions_end += regions_per_core;
 
         threads.emplace_back(
             run_tx<Protocol>, &flag, std::ref(t_data[i]), i, std::ref(tsm), std::ref(batch_txs),

@@ -22,37 +22,26 @@ public:
     using Version = typename Value::Version;
     using LeafNode = typename Index::LeafNode;
     using NodeInfo = typename Index::NodeInfo;
-    using VersionStatus = typename Version::Status;
 
     Serval(uint64_t core_id, TxID txid, std::vector<RowRegion>& my_regions)
         : core_id_(core_id), txid_(txid), regions_(my_regions), cur_ptr_(0) {}
 
     ~Serval() {}
 
-    unsigned int clear_left(unsigned int bitmap, int pos) {
-        unsigned int left_mask = (1 << (pos + 1) - 1);
-        return bitmap & left_mask;
-    }
-
-    unsigned int clear_right(unsigned int bitmap, int pos) {
-        unsigned int right_mask = ~((1U << pos) - 1);
-        return bitmap & right_mask;
-    }
-
     void append_pending_version(TableID table_id, Key key) {
-        const Schema& sch = Schema::get_schema();
+        // const Schema& sch = Schema::get_schema();
         Index& idx = Index::get_index();
 
-        size_t record_size = sch.get_record_size(table_id);
+        // size_t record_size = sch.get_record_size(table_id);
         tables.insert(table_id);
         auto& rw_table = rws.get_table(table_id);
         auto rw_iter = rw_table.find(key);
 
-        Version* pending_version;
+        Version* pending_version = nullptr;
+        Value* val;
 
         // Case of not read and written
         if (rw_iter == rw_table.end()) {
-            Value* val;
             typename Index::Result res =
                 idx.find(table_id, key, val);  // find corresponding index in masstree
 
@@ -63,7 +52,7 @@ public:
             }
 
             // Got value from masstree
-            RowRegion* region = __atomic_load_n(val->ptr_to_version_array, __ATOMIC_SEQ_CST);
+            RowRegion* region = __atomic_load_n(&val->row_region, __ATOMIC_SEQ_CST);
 
             if (region == nullptr) {    // Per-core version array does not exist (_0)
                 if (val->try_lock()) {  // Successfully got the try lock (00)
@@ -72,12 +61,12 @@ public:
                 }
 
                 // Failed to get the lock (10)
-                pending_version = install_ptr_to_row_region_10(cur_ptr_);
+                pending_version = install_ptr_to_row_region_10(val);
                 goto FINISH;
             }
 
             // region is not nullptr -> Per-core version array exist (_1)
-            pending_version = update_row_region__1();
+            pending_version = update_row_region__1(val);
             goto FINISH;
         }
 
@@ -86,16 +75,20 @@ FINISH:
         auto new_iter = rw_table.emplace_hint(
             rw_iter, std::piecewise_construct, std::forward_as_tuple(key),
             std::forward_as_tuple(
-                version->rec, nullptr, ReadWriteType::UPDATE, false, val,
+                pending_version->rec, nullptr, ReadWriteType::UPDATE, false, val,
                 pending_version));  // TODO: チェックする
         // Place it in writeset
         auto& w_table = ws.get_table(table_id);
         w_table.emplace_back(key, new_iter);
+
+        // ========================================================
+        // TODO: Case of found in read and written set
     }
 
     const Rec* read(TableID table_id, Key key) {
         Index& idx = Index::get_index();
-        size_t record_size = sch.get_record_size(table_id);
+        // const Schema& sch = Schema::get_schema();
+        // size_t record_size = sch.get_record_size(table_id);
         Value* val;
         typename Index::Result res =
             idx.find(table_id, key, val);  // find corresponding index in masstree
@@ -106,64 +99,64 @@ FINISH:
 
         // Use val to find visible version
 
+        // ====== 1. load core bitmap and identify the core which create the visible
+        // version ======
+
         // load current core's core bitmap
-        uint64_t current_core_bitmap = __atomic_load_n(val->core_bitmap, __ATOMIC_SEQ_CST);
+        uint64_t current_core_bitmap = val->core_bitmap;
 
-        // To-Do
-        // 2 ways to calculate my_core_pos -> spot the current core's digit in core
-        // bitmap (1) use my core_id (uint64_t) and convert it to int (2) change my
-        // tx_id (TXID) to integer and then divide by 64 (core num)
-        int my_core_pos;
+        // my_core_pos -> spot the current core's digit in core bitmap (range: 0 -
+        // 63)
+        int my_core_pos = core_id_ % 64;
 
-        // mask the core bitmap
-        unsigned int masked_core_bitmap = clear_right(current_core_bitmap, my_core_pos);
+        // latest_core_pos -> spot the core that occurs the latest update
+        int latest_core_pos = mask_and_find_latest_pos(current_core_bitmap, my_core_pos);
 
-        // __builtin_ffsll(unsigned int): returns the location of 1st "1" from right
-        // __builtin_clzll(unsigned int): returns the number of leading "0" from
-        // left core_bitmap: 00111111 ... 00000011 write occurs in: core2-7, ...
-        int latest_core_pos = 64 - __builtin_ffsll(masked_core_bitmap);
-
-        // no visible version available
-        if (latest_core_pos = 0) {
+        // return nullptr if no visible version available
+        if (latest_core_pos == 0) {
             return nullptr;
         }
+        // ===========================================================================================
 
-        unsigned int latest_node = numa_node_of_cpu(latest_core_pos);
+        // ====== 2. load the transaction bitmap from the identified core ======
 
-        // locate the current per-core version array
-        PerCoreVersionArray* current_version_array =
-            getPerCoreVersionArray(latest_core_pos, latest_node);
+        // load current per-core version array which potentially has visible version
+        PerCoreVersionArray* current_version_array = val->row_region->arrays_[latest_core_pos];
+        // ===========================================================================================
 
-        uint64_t current_transaction_bitmap = current_version_array.transaction_bitmap;
+        // ====== 3. identify visible version by calculating transaction_bitmap
+        // ======
 
-        // To-Do
-        // calculate my_tx_pos -> spot the current tx's digit in tx bitmap
-        // use txid_ to calculate
-        int my_tx_pos;
+        // load curent transaction bitmap from current version array
+        uint64_t current_transaction_bitmap = current_version_array->transaction_bitmap;
 
-        // clear_left: change all bits to 0 if it's larger than my tx_id
-        unsigned int latest_transaction_bitmap =
-            current_version_array.clear_left(current_transaction_bitmap, my_tx_pos);
+        // my_tx_pos -> spot the current tx's digit in tx bitmap
+        int my_tx_pos = static_cast<int>(txid_.thread_id) % 64;
 
-        // __builtin_clzll(unsigned int): returns the number of leading "0"
-        unsigned int latest_tx_num = __builtin_clzll(latest_transaction_bitmap);
+        // calculate latest_tx_num
+        int latest_tx_pos = mask_and_find_latest_pos(current_transaction_bitmap, my_tx_pos);
 
-        if (latest_tx_num = 0) {
+        // the current per-core version array does not have the visible version,
+        // needs to find visible version from the previous core
+        if (latest_tx_pos == 0) {
 AGAIN:
-            // means that the currne per-core version array does not have the visible
-            // version, needs to find from the previous core
+            // load previous core's version array and transaction bitmap
             PerCoreVersionArray* previous_version_array =
-                getPerCoreVersionArray(latest_core_pos - 1, numa_node_of_cpu(latest_core_pos - 1));
-            unsigned int previous_transaction_bitmap = previous_version_array->transaction_bitmap;
-            unsigned int previous_latest_tx_num = __builtin_clzll(previous_transaction_bitmap);
-            if (previous_latest_tx_num = 0) {
-                goto AGAIN
-            };
-            Version* previous_latest_version = previous_version_array.slots[latest_tx_num];
+                val->row_region->arrays_[latest_core_pos - 1];
+            uint64_t previous_transaction_bitmap = previous_version_array->transaction_bitmap;
+
+            // find the visible version from previous core (no mask needed)
+            int previous_latest_tx_pos = find_latest_pos(previous_transaction_bitmap);
+            if (previous_latest_tx_pos == 0) {
+                goto AGAIN;
+            }
+            Version* previous_latest_version =
+                previous_version_array->slots[previous_latest_tx_pos];
             return previous_latest_version->rec;
         }
 
-        Version* latest_version = current_version_array.slots[latest_tx_num];
+        Version* latest_version = current_version_array->slots[latest_tx_pos];
+        // ===========================================================================================
 
         return latest_version->rec;
     }
@@ -175,18 +168,17 @@ AGAIN:
     Rec* upsert(TableID table_id, Key key) {
         const Schema& sch = Schema::get_schema();
         size_t record_size = sch.get_record_size(table_id);
-        auto& w_table = ws.get_table(table_id);
-        auto w_iter = w_table.find(key);
+        auto& rw_table = rws.get_table(table_id);
+        auto rw_iter = rw_table.find(key);
 
-        if (w_iter == w_table.end()) {
+        if (rw_iter == rw_table.end()) {
             // TODO: この場合は絶対に呼ばれないはず
             throw std::runtime_error("masstree NOT_FOUND");
             return nullptr;
         }
 
-        Value* val = w_iter->second.val;
-        Version* pending_version = w_iter->second.pending_version;
-        pending_version->status = VersionStatus::UPDATED;
+        Version* pending_version = rw_iter->second.pending_version;
+        pending_version->status = Version::VersionStatus::UPDATED;
 
         Rec* rec = MemoryAllocator::aligned_allocate(record_size);
         pending_version->rec = rec;  // write
@@ -194,135 +186,10 @@ AGAIN:
     }
 
     bool precommit() {
-        // LOG_INFO("PRECOMMIT, ts: %lu, s_ts: %lu, l_ts: %lu", start_ts,
-        // smallest_ts,
-        //          largest_ts);
-        // Index& idx = Index::get_index();
-
-        // LOG_INFO("LOCKING RECORDS");
-        // // Lock records
-        // for (TableID table_id : tables) {
-        //   auto& w_table = ws.get_table(table_id);
-        //   std::sort(w_table.begin(), w_table.end(),
-        //             [](const auto& lhs, const auto& rhs) {
-        //               return lhs.first <= rhs.first;
-        //             });
-        //   for (auto w_iter = w_table.begin(); w_iter != w_table.end(); ++w_iter)
-        //   {
-        //     LOG_DEBUG("     LOCK (t: %lu, k: %lu)", table_id, w_iter->first);
-        //     auto rw_iter = w_iter->second;
-        //     Value* val = rw_iter->second.val;
-        //     val->lock();
-        //     if (val->is_detached_from_tree()) {
-        //       remove_already_inserted(table_id, w_iter->first, true);
-        //       unlock_writeset(table_id, w_iter->first, false);
-        //       return false;
-        //     }
-        //     auto rwt = rw_iter->second.rwt;
-        //     bool is_new = rw_iter->second.is_new;
-        //     if (rwt == ReadWriteType::INSERT && is_new) {
-        //       // On INSERT(is_new=true), insert the record to shared index
-        //       NodeInfo ni;
-        //       auto res = idx.insert(table_id, w_iter->first, val, ni);
-        //       if (res == Index::Result::NOT_INSERTED) {
-        //         remove_already_inserted(table_id, w_iter->first, true);
-        //         unlock_writeset(table_id, w_iter->first, false);
-        //         return false;
-        //       } else if (res == Index::Result::OK) {
-        //         // to prevent phantoms, abort if timestamp of the node is larger
-        //         // than start_ts
-        //         LeafNode* leaf = reinterpret_cast<LeafNode*>(ni.node);
-        //         if (leaf->get_ts() > start_ts) {
-        //           remove_already_inserted(table_id, w_iter->first, false);
-        //           unlock_writeset(table_id, w_iter->first, false);
-        //           return false;
-        //         }
-        //       }
-        //     } else if (rwt == ReadWriteType::INSERT && !is_new) {
-        //       // On INSERT(is_new=false), check the latest version timestamp and
-        //       // whether it is deleted
-        //       uint64_t read_ts = val->version->read_ts;
-        //       uint64_t write_ts = val->version->write_ts;
-        //       bool deleted = val->version->deleted;
-        //       if (read_ts > start_ts || write_ts > start_ts || !deleted) {
-        //         remove_already_inserted(table_id, w_iter->first, true);
-        //         unlock_writeset(table_id, w_iter->first, false);
-        //         return false;
-        //       }
-        //     } else if (rwt == ReadWriteType::UPDATE ||
-        //                rwt == ReadWriteType::DELETE) {
-        //       // On UPDATE/DELETED, check the latest version timestamp and
-        //       whether
-        //       // it is not deleted
-        //       uint64_t read_ts = val->version->read_ts;
-        //       uint64_t write_ts = val->version->write_ts;
-        //       bool deleted = val->version->deleted;
-        //       if (read_ts > start_ts || write_ts > start_ts || deleted) {
-        //         remove_already_inserted(table_id, w_iter->first, true);
-        //         unlock_writeset(table_id, w_iter->first, false);
-        //         return false;
-        //       }
-        //     }
-        //   }
-        // }
-
-        // LOG_INFO("APPLY CHANGES TO INDEX");
-        // // Apply changes to index
-        // for (TableID table_id : tables) {
-        //   auto& w_table = ws.get_table(table_id);
-        //   for (auto w_iter = w_table.begin(); w_iter != w_table.end(); ++w_iter)
-        //   {
-        //     auto rw_iter = w_iter->second;
-        //     Value* val = rw_iter->second.val;
-        //     if (!rw_iter->second.is_new) {
-        //       Version* version = reinterpret_cast<Version*>(
-        //           MemoryAllocator::aligned_allocate(sizeof(Version)));
-        //       version->read_ts = start_ts;
-        //       version->write_ts = start_ts;
-        //       version->prev = val->version;
-        //       version->rec = rw_iter->second.write_rec;
-        //       version->deleted = (rw_iter->second.rwt == ReadWriteType::DELETE);
-        //       val->version = version;
-        //     }
-        //     gc_version_chain(val);
-        //     val->unlock();
-        //   }
-        // }
         return true;
     }
 
-    void abort() {
-        // for (TableID table_id : tables) {
-        //   auto& rw_table = rws.get_table(table_id);
-        //   auto& w_table = ws.get_table(table_id);
-        //   for (auto w_iter = w_table.begin(); w_iter != w_table.end(); ++w_iter)
-        //   {
-        //     auto rw_iter = w_iter->second;
-        //     auto rwt = rw_iter->second.rwt;
-        //     bool is_new = rw_iter->second.is_new;
-        //     if (rwt == ReadWriteType::INSERT && is_new) {
-        //       Value* val = rw_iter->second.val;  // This points to locally
-        //       allocated
-        //                                          // value when Insert(is_new =
-        //                                          true)
-        //       if (val->version) {
-        //         // if version is not a nullptr, this means that no attempts have
-        //         // been made to insert val to index. Thus, the version is not
-        //         // touched and not deallocated. Otherwise version is already
-        //         // deallocated by the remove_already_inserted function
-        //         MemoryAllocator::deallocate(val->version->rec);
-        //         MemoryAllocator::deallocate(val->version);
-        //         MemoryAllocator::deallocate(val);
-        //       }
-        //     } else {
-        //       MemoryAllocator::deallocate(rw_iter->second.write_rec);
-        //     }
-        //   }
-        //   rw_table.clear();
-        //   w_table.clear();
-        // }
-        // tables.clear();
-    }
+    void abort() {}
 
     uint64_t core_id_;
     TxID txid_;
@@ -335,6 +202,52 @@ private:
     ReadWriteSet<Key, Value> rws;  // read write set
     WriteSet<Key, Value> ws;       // write set
 
+    // 24/3/23 -> move all from public to private
+    // 24/3/21 -> change type from unsigned int to uint64_t
+    uint64_t clear_left(uint64_t bits, int pos) {
+        uint64_t mask = (1ULL << (pos + 1)) - 1;
+        return bits & mask;
+    }
+
+    uint64_t clear_right(uint64_t bits, int pos) {
+        uint64_t mask = ~((1ULL << pos) - 1);
+        return bits & mask;
+    }
+
+    // Apply type casting for buitlin bit functions
+
+    // returns the location of 1st "1" from right
+    template <typename T>
+    int first_one_from_right(T x) {
+        static_assert(std::is_same_v<T, uint64_t>, "T must be uint64_t");
+        return __builtin_ffsll(x);
+    }
+
+    // returns the number of leading "0" from left
+    template <typename T>
+    int num_leading_zeros(T x) {
+        static_assert(std::is_same_v<T, uint64_t>, "T must be uint64_t");
+        return __builtin_clzll(x);
+    }
+
+    // returns the number of trailing "0" from left
+    template <typename T>
+    int num_trailing_zeros(T x) {
+        static_assert(std::is_same_v<T, uint64_t>, "T must be uint64_t");
+        return __builtin_ctzll(x);
+    }
+
+    // find the most-left "1" after clearing all bits from pos with mask
+    int mask_and_find_latest_pos(uint64_t bits, int pos) {
+        uint64_t masked_bits = clear_left(bits, pos);
+        return (63 - num_leading_zeros(masked_bits));
+    }
+
+    // find the most-left "1" after clearing all bitswithout masking
+    int find_latest_pos(uint64_t bits) {
+        return (63 - num_leading_zeros(bits));
+    }
+
     Version* append_to_global_version_chain_00(Value* val) {
         Version* new_version = create_pending_version();
 
@@ -342,19 +255,19 @@ private:
         new_version->prev = val->version;
         val->version = new_version;
 
-        val.unlock();
+        val->unlock();
         return new_version;
     }
 
     Version* install_ptr_to_row_region_10(Value* val) {
         RowRegion* return_value;
-        RowRegion* my_region = regions_[cur_ptr_];
+        RowRegion& my_region = regions_[cur_ptr_];
 
         // Install pointer to per-core version array by __atomic_exchange
         // stores the contents of my_region into val->ptr_to_version_array.
         // The original value of val->ptr_to_version_array is copied into
         // return_value.
-        __atomic_exchange(val->ptr_to_version_array, my_region, return_value, __ATOMIC_SEQ_CST);
+        __atomic_exchange(&val->row_region, &my_region, &return_value, __ATOMIC_SEQ_CST);
 
         Version* pending_version = create_pending_version();
 
@@ -363,25 +276,25 @@ private:
         // my_region
         if (return_value == nullptr) {
             cur_ptr_++;  // move cur_ptr_ to next slot
-            my_region->arrays_[core_id_]->append_to_slots(pending_version);
+            my_region.arrays_[core_id_]->append_to_slots(val, core_id_, pending_version, txid_);
             return pending_version;
         }
 
         // other thread already assigned per-core version region of the data item
         // CAS is unsuccessful, val->ptr_to_version_array has some other addresss
         // use ptr which other thread already assigned
-        return_value->arrays_[core_id_]->append_to_slots(pending_version);
+        return_value->arrays_[core_id_]->append_to_slots(val, core_id_, pending_version, txid_);
 
         return pending_version;
     }
 
-    Version* update_row_region__1() {
-        RowRegion* my_region = regions_[cur_ptr_];
+    Version* update_row_region__1(Value* val) {
+        RowRegion my_region = regions_[cur_ptr_];
 
         // Create pending version, update 2 bitmaps and append to per-core version
         // array
         Version* pending_version = create_pending_version();
-        my_region->arrays_[core_id_]->append_to_slots(pending_version);
+        my_region.arrays_[core_id_]->append_to_slots(val, core_id_, pending_version, txid_);
         return pending_version;
     }
 
@@ -391,7 +304,7 @@ private:
         version->prev = nullptr;
         version->rec = nullptr;  // TODO
         version->deleted = false;
-        version->status = VersionStatus::PENDING;
+        version->status = Version::VersionStatus::PENDING;
         return version;
     }
 
