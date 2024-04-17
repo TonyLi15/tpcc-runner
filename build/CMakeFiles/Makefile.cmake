@@ -80,8 +80,6 @@ set(CMAKE_MAKEFILE_PRODUCTS
 
 # Dependency information for all targets:
 set(CMAKE_DEPEND_INFO_FILES
-  "CMakeFiles/check-format.dir/DependInfo.cmake"
-  "CMakeFiles/format.dir/DependInfo.cmake"
   "CMakeFiles/tpccrunner_static.dir/DependInfo.cmake"
   "CMakeFiles/ycsb4_serval.dir/DependInfo.cmake"
   "CMakeFiles/tpccrunner_objlib.dir/DependInfo.cmake"

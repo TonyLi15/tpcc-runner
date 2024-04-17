@@ -19,6 +19,7 @@ CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o
  ../protocols/common/transaction_id.hpp
  ../protocols/serval/include/readwriteset.hpp
  ../protocols/serval/include/region.hpp
+ ../protocols/serval/include/rendezvous_barrier.hpp
  ../protocols/serval/include/request.hpp
  ../protocols/serval/include/serval.hpp
  ../protocols/serval/include/value.hpp
@@ -30,6 +31,7 @@ CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o
  ../utils/logger.hpp
  ../utils/numa.hpp
  ../utils/random.hpp
+ ../utils/tsc.hpp
  ../utils/utils.hpp
  ../utils/zipf.hpp
  /home/tonyli_15/tpcc-runner/executables/ycsb_serval.cpp

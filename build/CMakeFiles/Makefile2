@@ -70,8 +70,6 @@ preinstall: _deps/build/googletest/preinstall
 .PHONY : preinstall
 
 # The main recursive "clean" target.
-clean: CMakeFiles/check-format.dir/clean
-clean: CMakeFiles/format.dir/clean
 clean: CMakeFiles/tpccrunner_static.dir/clean
 clean: CMakeFiles/ycsb4_serval.dir/clean
 clean: CMakeFiles/tpccrunner_objlib.dir/clean
@@ -190,67 +188,13 @@ _deps/build/mimalloc/clean: _deps/build/mimalloc/CMakeFiles/mimalloc.dir/clean
 .PHONY : _deps/build/mimalloc/clean
 
 #=============================================================================
-# Target rules for target CMakeFiles/check-format.dir
-
-# All Build rule for target.
-CMakeFiles/check-format.dir/all:
-	$(MAKE) -f CMakeFiles/check-format.dir/build.make CMakeFiles/check-format.dir/depend
-	$(MAKE) -f CMakeFiles/check-format.dir/build.make CMakeFiles/check-format.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=1 "Built target check-format"
-.PHONY : CMakeFiles/check-format.dir/all
-
-# Build rule for subdir invocation for target.
-CMakeFiles/check-format.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/tonyli_15/tpcc-runner/build/CMakeFiles 1
-	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/check-format.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/tonyli_15/tpcc-runner/build/CMakeFiles 0
-.PHONY : CMakeFiles/check-format.dir/rule
-
-# Convenience name for target.
-check-format: CMakeFiles/check-format.dir/rule
-
-.PHONY : check-format
-
-# clean rule for target.
-CMakeFiles/check-format.dir/clean:
-	$(MAKE) -f CMakeFiles/check-format.dir/build.make CMakeFiles/check-format.dir/clean
-.PHONY : CMakeFiles/check-format.dir/clean
-
-#=============================================================================
-# Target rules for target CMakeFiles/format.dir
-
-# All Build rule for target.
-CMakeFiles/format.dir/all:
-	$(MAKE) -f CMakeFiles/format.dir/build.make CMakeFiles/format.dir/depend
-	$(MAKE) -f CMakeFiles/format.dir/build.make CMakeFiles/format.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=2 "Built target format"
-.PHONY : CMakeFiles/format.dir/all
-
-# Build rule for subdir invocation for target.
-CMakeFiles/format.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/tonyli_15/tpcc-runner/build/CMakeFiles 1
-	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/format.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/tonyli_15/tpcc-runner/build/CMakeFiles 0
-.PHONY : CMakeFiles/format.dir/rule
-
-# Convenience name for target.
-format: CMakeFiles/format.dir/rule
-
-.PHONY : format
-
-# clean rule for target.
-CMakeFiles/format.dir/clean:
-	$(MAKE) -f CMakeFiles/format.dir/build.make CMakeFiles/format.dir/clean
-.PHONY : CMakeFiles/format.dir/clean
-
-#=============================================================================
 # Target rules for target CMakeFiles/tpccrunner_static.dir
 
 # All Build rule for target.
 CMakeFiles/tpccrunner_static.dir/all: CMakeFiles/tpccrunner_objlib.dir/all
 	$(MAKE) -f CMakeFiles/tpccrunner_static.dir/build.make CMakeFiles/tpccrunner_static.dir/depend
 	$(MAKE) -f CMakeFiles/tpccrunner_static.dir/build.make CMakeFiles/tpccrunner_static.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=58 "Built target tpccrunner_static"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=56 "Built target tpccrunner_static"
 .PHONY : CMakeFiles/tpccrunner_static.dir/all
 
 # Build rule for subdir invocation for target.
@@ -280,7 +224,7 @@ CMakeFiles/ycsb4_serval.dir/all: _deps/build/masstree/CMakeFiles/masstree.dir/al
 CMakeFiles/ycsb4_serval.dir/all: _deps/build/mimalloc/CMakeFiles/mimalloc.dir/all
 	$(MAKE) -f CMakeFiles/ycsb4_serval.dir/build.make CMakeFiles/ycsb4_serval.dir/depend
 	$(MAKE) -f CMakeFiles/ycsb4_serval.dir/build.make CMakeFiles/ycsb4_serval.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=59,60 "Built target ycsb4_serval"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=57,58 "Built target ycsb4_serval"
 .PHONY : CMakeFiles/ycsb4_serval.dir/all
 
 # Build rule for subdir invocation for target.
@@ -308,7 +252,7 @@ CMakeFiles/tpccrunner_objlib.dir/all: _deps/build/masstree/CMakeFiles/masstree.d
 CMakeFiles/tpccrunner_objlib.dir/all: _deps/build/mimalloc/CMakeFiles/mimalloc.dir/all
 	$(MAKE) -f CMakeFiles/tpccrunner_objlib.dir/build.make CMakeFiles/tpccrunner_objlib.dir/depend
 	$(MAKE) -f CMakeFiles/tpccrunner_objlib.dir/build.make CMakeFiles/tpccrunner_objlib.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=57 "Built target tpccrunner_objlib"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=55 "Built target tpccrunner_objlib"
 .PHONY : CMakeFiles/tpccrunner_objlib.dir/all
 
 # Build rule for subdir invocation for target.
@@ -336,7 +280,7 @@ _deps/build/masstree/CMakeFiles/masstree.dir/all: _deps/build/masstree/CMakeFile
 _deps/build/masstree/CMakeFiles/masstree.dir/all: _deps/build/masstree/CMakeFiles/masstree_obj1.dir/all
 	$(MAKE) -f _deps/build/masstree/CMakeFiles/masstree.dir/build.make _deps/build/masstree/CMakeFiles/masstree.dir/depend
 	$(MAKE) -f _deps/build/masstree/CMakeFiles/masstree.dir/build.make _deps/build/masstree/CMakeFiles/masstree.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=11 "Built target masstree"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=9 "Built target masstree"
 .PHONY : _deps/build/masstree/CMakeFiles/masstree.dir/all
 
 # Build rule for subdir invocation for target.
@@ -363,7 +307,7 @@ _deps/build/masstree/CMakeFiles/masstree.dir/clean:
 _deps/build/masstree/CMakeFiles/masstree_obj2.dir/all:
 	$(MAKE) -f _deps/build/masstree/CMakeFiles/masstree_obj2.dir/build.make _deps/build/masstree/CMakeFiles/masstree_obj2.dir/depend
 	$(MAKE) -f _deps/build/masstree/CMakeFiles/masstree_obj2.dir/build.make _deps/build/masstree/CMakeFiles/masstree_obj2.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=21 "Built target masstree_obj2"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=19 "Built target masstree_obj2"
 .PHONY : _deps/build/masstree/CMakeFiles/masstree_obj2.dir/all
 
 # Build rule for subdir invocation for target.
@@ -390,7 +334,7 @@ _deps/build/masstree/CMakeFiles/masstree_obj2.dir/clean:
 _deps/build/masstree/CMakeFiles/masstree_obj1.dir/all:
 	$(MAKE) -f _deps/build/masstree/CMakeFiles/masstree_obj1.dir/build.make _deps/build/masstree/CMakeFiles/masstree_obj1.dir/depend
 	$(MAKE) -f _deps/build/masstree/CMakeFiles/masstree_obj1.dir/build.make _deps/build/masstree/CMakeFiles/masstree_obj1.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=12,13,14,15,16,17,18,19,20 "Built target masstree_obj1"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=10,11,12,13,14,15,16,17,18 "Built target masstree_obj1"
 .PHONY : _deps/build/masstree/CMakeFiles/masstree_obj1.dir/all
 
 # Build rule for subdir invocation for target.
@@ -417,7 +361,7 @@ _deps/build/masstree/CMakeFiles/masstree_obj1.dir/clean:
 _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/all: _deps/build/mimalloc/CMakeFiles/mimalloc.dir/all
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/depend
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=55,56 "Built target mimalloc-test-stress"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=53,54 "Built target mimalloc-test-stress"
 .PHONY : _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/all
 
 # Build rule for subdir invocation for target.
@@ -444,7 +388,7 @@ _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/clean:
 _deps/build/mimalloc/CMakeFiles/mimalloc-obj.dir/all:
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc-obj.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc-obj.dir/depend
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc-obj.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc-obj.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=37 "Built target mimalloc-obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=35 "Built target mimalloc-obj"
 .PHONY : _deps/build/mimalloc/CMakeFiles/mimalloc-obj.dir/all
 
 # Build rule for subdir invocation for target.
@@ -471,7 +415,7 @@ _deps/build/mimalloc/CMakeFiles/mimalloc-obj.dir/clean:
 _deps/build/mimalloc/CMakeFiles/mimalloc-static.dir/all:
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc-static.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc-static.dir/depend
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc-static.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc-static.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=38,39,40,41,42,43,44,45,46,47,48,49,50,51,52 "Built target mimalloc-static"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=36,37,38,39,40,41,42,43,44,45,46,47,48,49,50 "Built target mimalloc-static"
 .PHONY : _deps/build/mimalloc/CMakeFiles/mimalloc-static.dir/all
 
 # Build rule for subdir invocation for target.
@@ -498,7 +442,7 @@ _deps/build/mimalloc/CMakeFiles/mimalloc-static.dir/clean:
 _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/all: _deps/build/mimalloc/CMakeFiles/mimalloc-static.dir/all
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/depend
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=53,54 "Built target mimalloc-test-api"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=51,52 "Built target mimalloc-test-api"
 .PHONY : _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/all
 
 # Build rule for subdir invocation for target.
@@ -525,7 +469,7 @@ _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/clean:
 _deps/build/mimalloc/CMakeFiles/mimalloc.dir/all:
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc.dir/depend
 	$(MAKE) -f _deps/build/mimalloc/CMakeFiles/mimalloc.dir/build.make _deps/build/mimalloc/CMakeFiles/mimalloc.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=22,23,24,25,26,27,28,29,30,31,32,33,34,35,36 "Built target mimalloc"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=20,21,22,23,24,25,26,27,28,29,30,31,32,33,34 "Built target mimalloc"
 .PHONY : _deps/build/mimalloc/CMakeFiles/mimalloc.dir/all
 
 # Build rule for subdir invocation for target.
@@ -553,7 +497,7 @@ _deps/build/googletest/googlemock/CMakeFiles/gmock_main.dir/all: _deps/build/goo
 _deps/build/googletest/googlemock/CMakeFiles/gmock_main.dir/all: _deps/build/googletest/googletest/CMakeFiles/gtest.dir/all
 	$(MAKE) -f _deps/build/googletest/googlemock/CMakeFiles/gmock_main.dir/build.make _deps/build/googletest/googlemock/CMakeFiles/gmock_main.dir/depend
 	$(MAKE) -f _deps/build/googletest/googlemock/CMakeFiles/gmock_main.dir/build.make _deps/build/googletest/googlemock/CMakeFiles/gmock_main.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=5,6 "Built target gmock_main"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=3,4 "Built target gmock_main"
 .PHONY : _deps/build/googletest/googlemock/CMakeFiles/gmock_main.dir/all
 
 # Build rule for subdir invocation for target.
@@ -580,7 +524,7 @@ _deps/build/googletest/googlemock/CMakeFiles/gmock_main.dir/clean:
 _deps/build/googletest/googlemock/CMakeFiles/gmock.dir/all: _deps/build/googletest/googletest/CMakeFiles/gtest.dir/all
 	$(MAKE) -f _deps/build/googletest/googlemock/CMakeFiles/gmock.dir/build.make _deps/build/googletest/googlemock/CMakeFiles/gmock.dir/depend
 	$(MAKE) -f _deps/build/googletest/googlemock/CMakeFiles/gmock.dir/build.make _deps/build/googletest/googlemock/CMakeFiles/gmock.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=3,4 "Built target gmock"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=1,2 "Built target gmock"
 .PHONY : _deps/build/googletest/googlemock/CMakeFiles/gmock.dir/all
 
 # Build rule for subdir invocation for target.
@@ -607,7 +551,7 @@ _deps/build/googletest/googlemock/CMakeFiles/gmock.dir/clean:
 _deps/build/googletest/googletest/CMakeFiles/gtest_main.dir/all: _deps/build/googletest/googletest/CMakeFiles/gtest.dir/all
 	$(MAKE) -f _deps/build/googletest/googletest/CMakeFiles/gtest_main.dir/build.make _deps/build/googletest/googletest/CMakeFiles/gtest_main.dir/depend
 	$(MAKE) -f _deps/build/googletest/googletest/CMakeFiles/gtest_main.dir/build.make _deps/build/googletest/googletest/CMakeFiles/gtest_main.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=9,10 "Built target gtest_main"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=7,8 "Built target gtest_main"
 .PHONY : _deps/build/googletest/googletest/CMakeFiles/gtest_main.dir/all
 
 # Build rule for subdir invocation for target.
@@ -634,7 +578,7 @@ _deps/build/googletest/googletest/CMakeFiles/gtest_main.dir/clean:
 _deps/build/googletest/googletest/CMakeFiles/gtest.dir/all:
 	$(MAKE) -f _deps/build/googletest/googletest/CMakeFiles/gtest.dir/build.make _deps/build/googletest/googletest/CMakeFiles/gtest.dir/depend
 	$(MAKE) -f _deps/build/googletest/googletest/CMakeFiles/gtest.dir/build.make _deps/build/googletest/googletest/CMakeFiles/gtest.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=7,8 "Built target gtest"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=5,6 "Built target gtest"
 .PHONY : _deps/build/googletest/googletest/CMakeFiles/gtest.dir/all
 
 # Build rule for subdir invocation for target.

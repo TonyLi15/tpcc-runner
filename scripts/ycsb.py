@@ -71,7 +71,7 @@ def build():
         print("Compiling " + " PAYLOAD_SIZE=" + payload)
         logfile = "_PAYLOAD_SIZE_" + payload + ".compile_log"
         os.system(
-            "cmake .. -DLOG_LEVEL=0 -DCMAKE_BUILD_TYPE=Release -DBENCHMARK=YCSB -DCC_ALG=SERVAL"
+            "cmake .. -DLOG_LEVEL=0 -DCMAKE_BUILD_TYPE=Debug -DBENCHMARK=YCSB -DCC_ALG=SERVAL"
             + " -DPAYLOAD_SIZE="
             + payload
             + " > ./log/"

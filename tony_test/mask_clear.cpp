@@ -4,7 +4,7 @@
 #include <iostream>
 
 uint64_t clear_left(uint64_t bits, int pos) {
-    uint64_t mask = (1ULL << pos + 1) - 1;
+    uint64_t mask = (1ULL << (pos + 1)) - 1;
     return bits & mask;
 }
 

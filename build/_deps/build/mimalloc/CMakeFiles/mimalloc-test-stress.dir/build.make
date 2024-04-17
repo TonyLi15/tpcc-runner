@@ -79,7 +79,7 @@ mimalloc__test__stress_EXTERNAL_OBJECTS =
 
 _deps/build/mimalloc/mimalloc-test-stress: _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/test/test-stress.c.o
 _deps/build/mimalloc/mimalloc-test-stress: _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/build.make
-_deps/build/mimalloc/mimalloc-test-stress: _deps/build/mimalloc/libmimalloc.so.1.7
+_deps/build/mimalloc/mimalloc-test-stress: _deps/build/mimalloc/libmimalloc-debug.so.1.7
 _deps/build/mimalloc/mimalloc-test-stress: /usr/lib/x86_64-linux-gnu/librt.so
 _deps/build/mimalloc/mimalloc-test-stress: _deps/build/mimalloc/CMakeFiles/mimalloc-test-stress.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking C executable mimalloc-test-stress"

@@ -18,6 +18,7 @@ CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../protocols/common/t
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../protocols/common/transaction_id.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../protocols/serval/include/readwriteset.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../protocols/serval/include/region.hpp
+CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../protocols/serval/include/rendezvous_barrier.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../protocols/serval/include/request.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../protocols/serval/include/serval.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../protocols/serval/include/value.hpp
@@ -29,6 +30,7 @@ CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../utils/atomic_wrapp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../utils/logger.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../utils/numa.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../utils/random.hpp
+CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../utils/tsc.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../utils/utils.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../utils/zipf.hpp
 CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o: ../executables/ycsb_serval.cpp

@@ -38,6 +38,7 @@ void print(T x) {
 }
 
 int main() {
+    // Change "bits" to bits that need to be tested
     uint64_t bits = 0b0000000000000000000000000000000000000000000000000000000010101011;
     print("The number in decimal format: ");
     print(bits);

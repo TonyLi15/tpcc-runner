@@ -12,7 +12,7 @@ if(NOT DEFINED CMAKE_INSTALL_CONFIG_NAME)
     string(REGEX REPLACE "^[^A-Za-z0-9_]+" ""
            CMAKE_INSTALL_CONFIG_NAME "${BUILD_TYPE}")
   else()
-    set(CMAKE_INSTALL_CONFIG_NAME "Release")
+    set(CMAKE_INSTALL_CONFIG_NAME "Debug")
   endif()
   message(STATUS "Install configuration: \"${CMAKE_INSTALL_CONFIG_NAME}\"")
 endif()
@@ -38,49 +38,49 @@ if(NOT DEFINED CMAKE_CROSSCOMPILING)
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
-  if(EXISTS "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so.1.7" AND
-     NOT IS_SYMLINK "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so.1.7")
+  if(EXISTS "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so.1.7" AND
+     NOT IS_SYMLINK "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so.1.7")
     file(RPATH_CHECK
-         FILE "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so.1.7"
+         FILE "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so.1.7"
          RPATH "")
   endif()
   list(APPEND CMAKE_ABSOLUTE_DESTINATION_FILES
-   "/usr/local/lib/mimalloc-1.7/libmimalloc.so.1.7")
+   "/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so.1.7")
   if(CMAKE_WARN_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(WARNING "ABSOLUTE path INSTALL DESTINATION : ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
   if(CMAKE_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(FATAL_ERROR "ABSOLUTE path INSTALL DESTINATION forbidden (by caller): ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
-file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7" TYPE SHARED_LIBRARY FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/libmimalloc.so.1.7")
-  if(EXISTS "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so.1.7" AND
-     NOT IS_SYMLINK "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so.1.7")
+file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7" TYPE SHARED_LIBRARY FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/libmimalloc-debug.so.1.7")
+  if(EXISTS "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so.1.7" AND
+     NOT IS_SYMLINK "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so.1.7")
     if(CMAKE_INSTALL_DO_STRIP)
-      execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so.1.7")
+      execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so.1.7")
     endif()
   endif()
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
-  if(EXISTS "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so" AND
-     NOT IS_SYMLINK "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so")
+  if(EXISTS "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so" AND
+     NOT IS_SYMLINK "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so")
     file(RPATH_CHECK
-         FILE "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so"
+         FILE "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so"
          RPATH "")
   endif()
   list(APPEND CMAKE_ABSOLUTE_DESTINATION_FILES
-   "/usr/local/lib/mimalloc-1.7/libmimalloc.so")
+   "/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so")
   if(CMAKE_WARN_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(WARNING "ABSOLUTE path INSTALL DESTINATION : ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
   if(CMAKE_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(FATAL_ERROR "ABSOLUTE path INSTALL DESTINATION forbidden (by caller): ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
-file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7" TYPE SHARED_LIBRARY FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/libmimalloc.so")
-  if(EXISTS "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so" AND
-     NOT IS_SYMLINK "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so")
+file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7" TYPE SHARED_LIBRARY FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/libmimalloc-debug.so")
+  if(EXISTS "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so" AND
+     NOT IS_SYMLINK "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so")
     if(CMAKE_INSTALL_DO_STRIP)
-      execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc.so")
+      execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}/usr/local/lib/mimalloc-1.7/libmimalloc-debug.so")
     endif()
   endif()
 endif()
@@ -107,29 +107,29 @@ if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_
     message(FATAL_ERROR "ABSOLUTE path INSTALL DESTINATION forbidden (by caller): ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
 file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7/cmake" TYPE FILE FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/CMakeFiles/Export/_usr/local/lib/mimalloc-1.7/cmake/mimalloc.cmake")
-  if("${CMAKE_INSTALL_CONFIG_NAME}" MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+  if("${CMAKE_INSTALL_CONFIG_NAME}" MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
     list(APPEND CMAKE_ABSOLUTE_DESTINATION_FILES
-     "/usr/local/lib/mimalloc-1.7/cmake/mimalloc-release.cmake")
+     "/usr/local/lib/mimalloc-1.7/cmake/mimalloc-debug.cmake")
     if(CMAKE_WARN_ON_ABSOLUTE_INSTALL_DESTINATION)
         message(WARNING "ABSOLUTE path INSTALL DESTINATION : ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
     endif()
     if(CMAKE_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION)
         message(FATAL_ERROR "ABSOLUTE path INSTALL DESTINATION forbidden (by caller): ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
     endif()
-file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7/cmake" TYPE FILE FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/CMakeFiles/Export/_usr/local/lib/mimalloc-1.7/cmake/mimalloc-release.cmake")
+file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7/cmake" TYPE FILE FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/CMakeFiles/Export/_usr/local/lib/mimalloc-1.7/cmake/mimalloc-debug.cmake")
   endif()
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
   list(APPEND CMAKE_ABSOLUTE_DESTINATION_FILES
-   "/usr/local/lib/mimalloc-1.7/libmimalloc.a")
+   "/usr/local/lib/mimalloc-1.7/libmimalloc-debug.a")
   if(CMAKE_WARN_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(WARNING "ABSOLUTE path INSTALL DESTINATION : ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
   if(CMAKE_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(FATAL_ERROR "ABSOLUTE path INSTALL DESTINATION forbidden (by caller): ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
-file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7" TYPE STATIC_LIBRARY FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/libmimalloc.a")
+file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7" TYPE STATIC_LIBRARY FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/libmimalloc-debug.a")
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
@@ -193,22 +193,22 @@ file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7/cmake" TYPE FILE FILES "/h
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
-  execute_process(COMMAND /usr/bin/cmake -E create_symlink mimalloc-1.7/libmimalloc.so.1.7 libmimalloc.so WORKING_DIRECTORY /usr/local/lib/mimalloc-1.7/..)
+  execute_process(COMMAND /usr/bin/cmake -E create_symlink mimalloc-1.7/libmimalloc-debug.so.1.7 libmimalloc-debug.so WORKING_DIRECTORY /usr/local/lib/mimalloc-1.7/..)
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
-  MESSAGE("-- Symbolic link: /usr/local/lib/libmimalloc.so -> mimalloc-1.7/libmimalloc.so.1.7")
+  MESSAGE("-- Symbolic link: /usr/local/lib/libmimalloc-debug.so -> mimalloc-1.7/libmimalloc-debug.so.1.7")
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
   list(APPEND CMAKE_ABSOLUTE_DESTINATION_FILES
-   "/usr/local/lib/mimalloc-1.7/mimalloc.o")
+   "/usr/local/lib/mimalloc-1.7/mimalloc-debug.o")
   if(CMAKE_WARN_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(WARNING "ABSOLUTE path INSTALL DESTINATION : ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
   if(CMAKE_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(FATAL_ERROR "ABSOLUTE path INSTALL DESTINATION forbidden (by caller): ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
-file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7" TYPE FILE RENAME "mimalloc.o" FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/CMakeFiles/mimalloc-obj.dir/src/static.c.o")
+file(INSTALL DESTINATION "/usr/local/lib/mimalloc-1.7" TYPE FILE RENAME "mimalloc-debug.o" FILES "/home/tonyli_15/tpcc-runner/build/_deps/build/mimalloc/CMakeFiles/mimalloc-obj.dir/src/static.c.o")
 endif()
 

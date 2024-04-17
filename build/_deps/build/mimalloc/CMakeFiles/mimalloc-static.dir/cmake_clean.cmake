@@ -13,8 +13,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/mimalloc-static.dir/src/region.c.o"
   "CMakeFiles/mimalloc-static.dir/src/segment.c.o"
   "CMakeFiles/mimalloc-static.dir/src/stats.c.o"
-  "libmimalloc.a"
-  "libmimalloc.pdb"
+  "libmimalloc-debug.a"
+  "libmimalloc-debug.pdb"
 )
 
 # Per-language clean rules from dependency scanning.

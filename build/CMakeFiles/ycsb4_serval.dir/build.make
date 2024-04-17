@@ -80,7 +80,7 @@ ycsb4_serval_EXTERNAL_OBJECTS =
 bin/ycsb4_serval: CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o
 bin/ycsb4_serval: CMakeFiles/ycsb4_serval.dir/build.make
 bin/ycsb4_serval: lib/libtpccrunner_static.a
-bin/ycsb4_serval: _deps/build/mimalloc/libmimalloc.so.1.7
+bin/ycsb4_serval: _deps/build/mimalloc/libmimalloc-debug.so.1.7
 bin/ycsb4_serval: /usr/lib/x86_64-linux-gnu/librt.so
 bin/ycsb4_serval: _deps/build/masstree/libmasstree.a
 bin/ycsb4_serval: CMakeFiles/ycsb4_serval.dir/link.txt

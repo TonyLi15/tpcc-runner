@@ -79,7 +79,7 @@ mimalloc__test__api_EXTERNAL_OBJECTS =
 
 _deps/build/mimalloc/mimalloc-test-api: _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/test/test-api.c.o
 _deps/build/mimalloc/mimalloc-test-api: _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/build.make
-_deps/build/mimalloc/mimalloc-test-api: _deps/build/mimalloc/libmimalloc.a
+_deps/build/mimalloc/mimalloc-test-api: _deps/build/mimalloc/libmimalloc-debug.a
 _deps/build/mimalloc/mimalloc-test-api: /usr/lib/x86_64-linux-gnu/librt.so
 _deps/build/mimalloc/mimalloc-test-api: _deps/build/mimalloc/CMakeFiles/mimalloc-test-api.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/tonyli_15/tpcc-runner/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking C executable mimalloc-test-api"

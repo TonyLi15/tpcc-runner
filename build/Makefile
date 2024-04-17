@@ -103,8 +103,8 @@ rebuild_cache/fast: rebuild_cache
 
 # Special rule for the target edit_cache
 edit_cache:
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "Running CMake cache editor..."
-	/usr/bin/ccmake -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "No interactive CMake dialog available..."
+	/usr/bin/cmake -E echo No\ interactive\ CMake\ dialog\ available.
 .PHONY : edit_cache
 
 # Special rule for the target edit_cache
@@ -156,32 +156,6 @@ depend:
 	$(CMAKE_COMMAND) -P /home/tonyli_15/tpcc-runner/build/CMakeFiles/VerifyGlobs.cmake
 	$(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
-
-#=============================================================================
-# Target rules for targets named check-format
-
-# Build rule for target.
-check-format: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 check-format
-.PHONY : check-format
-
-# fast build rule for target.
-check-format/fast:
-	$(MAKE) -f CMakeFiles/check-format.dir/build.make CMakeFiles/check-format.dir/build
-.PHONY : check-format/fast
-
-#=============================================================================
-# Target rules for targets named format
-
-# Build rule for target.
-format: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 format
-.PHONY : format
-
-# fast build rule for target.
-format/fast:
-	$(MAKE) -f CMakeFiles/format.dir/build.make CMakeFiles/format.dir/build
-.PHONY : format/fast
 
 #=============================================================================
 # Target rules for targets named tpccrunner_static
@@ -443,8 +417,6 @@ help:
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
 	@echo "... edit_cache"
-	@echo "... check-format"
-	@echo "... format"
 	@echo "... install/local"
 	@echo "... tpccrunner_static"
 	@echo "... ycsb4_serval"

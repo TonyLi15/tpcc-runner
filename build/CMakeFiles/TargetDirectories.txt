@@ -3,8 +3,6 @@
 /home/tonyli_15/tpcc-runner/build/CMakeFiles/list_install_components.dir
 /home/tonyli_15/tpcc-runner/build/CMakeFiles/rebuild_cache.dir
 /home/tonyli_15/tpcc-runner/build/CMakeFiles/edit_cache.dir
-/home/tonyli_15/tpcc-runner/build/CMakeFiles/check-format.dir
-/home/tonyli_15/tpcc-runner/build/CMakeFiles/format.dir
 /home/tonyli_15/tpcc-runner/build/CMakeFiles/install/local.dir
 /home/tonyli_15/tpcc-runner/build/CMakeFiles/tpccrunner_static.dir
 /home/tonyli_15/tpcc-runner/build/CMakeFiles/ycsb4_serval.dir

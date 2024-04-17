@@ -3,13 +3,13 @@
 
 # compile C with /usr/bin/cc
 # compile CXX with /usr/bin/c++
-C_FLAGS = -O3 -DNDEBUG  
+C_FLAGS = -g  
 
 C_DEFINES = 
 
 C_INCLUDES = 
 
-CXX_FLAGS = -Ofast -DNDEBUG   -std=c++11
+CXX_FLAGS = -O0 -g   -std=c++11
 
 CXX_DEFINES = 
 

@@ -194,6 +194,8 @@ protocols/serval/include/value.hpp
 utils/numa.hpp
 ../protocols/serval/include/utils/numa.hpp
 
+../protocols/serval/include/rendezvous_barrier.hpp
+
 ../protocols/serval/include/request.hpp
 vector
 -
@@ -316,6 +318,10 @@ cstring
 random
 -
 
+../utils/tsc.hpp
+cstdint
+-
+
 ../utils/utils.hpp
 cassert
 -
@@ -363,6 +369,8 @@ protocols/common/timestamp_manager.hpp
 /home/tonyli_15/tpcc-runner/executables/protocols/common/timestamp_manager.hpp
 protocols/serval/include/region.hpp
 /home/tonyli_15/tpcc-runner/executables/protocols/serval/include/region.hpp
+protocols/serval/include/rendezvous_barrier.hpp
+/home/tonyli_15/tpcc-runner/executables/protocols/serval/include/rendezvous_barrier.hpp
 protocols/serval/include/request.hpp
 /home/tonyli_15/tpcc-runner/executables/protocols/serval/include/request.hpp
 protocols/serval/include/serval.hpp
@@ -377,6 +385,8 @@ utils/logger.hpp
 /home/tonyli_15/tpcc-runner/executables/utils/logger.hpp
 utils/numa.hpp
 /home/tonyli_15/tpcc-runner/executables/utils/numa.hpp
+utils/tsc.hpp
+/home/tonyli_15/tpcc-runner/executables/utils/tsc.hpp
 utils/utils.hpp
 /home/tonyli_15/tpcc-runner/executables/utils/utils.hpp
 

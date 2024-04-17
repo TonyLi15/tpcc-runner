@@ -1,0 +1,2 @@
+ycsb4_serval: /home/tonyli_15/tpcc-runner/protocols/serval/include/serval.hpp:354: Rec* Serval<Index>::wait_stable_and_execute_read(Serval<Index>::Version*) [with Index = MasstreeIndexes<Value<Version> >; Rec = void; Serval<Index>::Version = Version]: Assertion `visible' failed.
+Aborted

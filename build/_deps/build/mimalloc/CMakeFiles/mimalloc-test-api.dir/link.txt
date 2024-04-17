@@ -1,1 +1,1 @@
-/usr/bin/cc -O3 -DNDEBUG  -rdynamic CMakeFiles/mimalloc-test-api.dir/test/test-api.c.o  -o mimalloc-test-api  libmimalloc.a -lpthread -lrt 
+/usr/bin/cc -g  -rdynamic CMakeFiles/mimalloc-test-api.dir/test/test-api.c.o  -o mimalloc-test-api  libmimalloc-debug.a -lpthread -lrt 

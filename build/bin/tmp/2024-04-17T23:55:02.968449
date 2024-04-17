@@ -1,0 +1,2 @@
+ycsb4_serval: /home/tonyli_15/tpcc-runner/protocols/serval/include/serval.hpp:265: Serval<Index>::Version* Serval<Index>::append_pending_version(Serval<Index>::Value*) [with Index = MasstreeIndexes<Value<Version> >; Serval<Index>::Version = Version; Serval<Index>::Value = Value<Version>]: Assertion `epoch < epoch_' failed.
+Aborted
