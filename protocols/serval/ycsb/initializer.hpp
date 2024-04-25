@@ -7,6 +7,7 @@
 #include "protocols/common/schema.hpp"
 #include "protocols/silo/include/tidword.hpp"
 #include "protocols/ycsb_common/record_misc.hpp"
+#include "utils/numa.hpp"
 #include "utils/utils.hpp"
 
 template <typename Index>
@@ -19,12 +20,15 @@ class Initializer {
   static void insert_into_index(TableID table_id, Key key, void* rec) {
     Value* val = reinterpret_cast<Value*>(
         MemoryAllocator::aligned_allocate(sizeof(Value)));
+    Version* final_state = reinterpret_cast<Version*>(
+        MemoryAllocator::aligned_allocate(sizeof(Version)));
     Version* version = reinterpret_cast<Version*>(
         MemoryAllocator::aligned_allocate(sizeof(Version)));
     val->initialize();
     version->rec = rec;
     version->deleted = false;
-    val->master_ = version;
+    val->global_array_.append(version, 0, 0);
+    val->master_ = final_state;
     Index::get_index().insert(table_id, key, val);
   }
 
@@ -35,6 +39,10 @@ class Initializer {
     sch.set_record_size(get_id<Record>(), sizeof(Record));
 
     const Config& c = get_config();
+
+    pid_t tid = gettid();  // fetch the thread's tid
+    Numa numa(tid, 0);     // move to the designated core
+    std::cout << "database is in node" << numa.node_ << std::endl;
 
     for (uint64_t key = 0; key < c.get_num_records(); key++) {
       void* rec = new (MemoryAllocator::allocate(sizeof(Record))) Record();

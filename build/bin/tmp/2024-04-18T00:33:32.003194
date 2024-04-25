@@ -1,2 +1,0 @@
-ycsb4_serval: /home/tonyli_15/tpcc-runner/protocols/serval/include/serval.hpp:120: const Rec* Serval<Index>::read(TableID, Serval<Index>::Key) [with Index = MasstreeIndexes<Value<Version> >; Rec = void; TableID = long unsigned int; Serval<Index>::Key = long unsigned int]: Assertion `visible_in_global_array' failed.
-Aborted

@@ -6,6 +6,7 @@
 #include <stdlib.h>     // exit
 #include <string.h>     // strerror
 #include <sys/types.h>  // pid_t
+#include <unistd.h>     // for gettid()
 
 #include <cassert>
 

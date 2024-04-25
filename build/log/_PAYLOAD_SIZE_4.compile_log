@@ -1,14 +1,14 @@
 Scanning dependencies of target masstree_obj2
-[  1%] Built target mimalloc-obj
-[  3%] Building C object _deps/build/masstree/CMakeFiles/masstree_obj2.dir/clp.c.o
-[ 29%] Built target mimalloc-static
-[ 55%] Built target mimalloc
-[ 58%] Built target gtest
-[ 74%] Built target masstree_obj1
-[ 77%] Built target mimalloc-test-api
-[ 81%] Built target gmock
-[ 84%] Built target mimalloc-test-stress
-[ 87%] Built target gtest_main
+[  8%] Building C object _deps/build/masstree/CMakeFiles/masstree_obj2.dir/clp.c.o
+[ 17%] Built target masstree_obj1
+[ 20%] Built target mimalloc-obj
+[ 44%] Built target mimalloc
+[ 62%] Built target gtest
+[ 74%] Built target mimalloc-static
+[ 77%] Built target gtest_main
+[ 81%] Built target mimalloc-test-stress
+[ 84%] Built target mimalloc-test-api
+[ 87%] Built target gmock
 [ 91%] Built target gmock_main
 [ 91%] Built target masstree_obj2
 [ 93%] Linking CXX static library libmasstree.a

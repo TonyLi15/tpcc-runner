@@ -13,37 +13,38 @@ import module.setting as setting
 
 # EXECUTE THIS SCRIPT IN BASE DIRECTORY!!!
 
-CLOCKS_PER_US = 2100  # used in plot
 NUM_EXPERIMENTS_PER_SETUP = 1  # used in plot
-NUM_SECONDS = 100  # used in plot
-VARYING_TYPE = "skew"  # used in plot
+NUM_SECONDS = 1  # used in plot
+VARYING_TYPE = "contention"  # used in plot
 
 x_label = {
     "num_threads": "#thread",
-    "usleep": "sleep[μs] of Long",
-    "reps_long": "#operations of Long",
-    "skew": "Skew",
-    "opt_interval": "opt_interval",
-    "interval": "interval",
+    "reps": "#operations",
+    "contention": "Skew",
 }
 
+protocol_id = {"CARACAL": 0, "SERVAL": 1}
+
+protocols = ["caracal", "serval"]
+# protocols = ["caracal"]
+
+CMAKE_BUILD_TYPE = "Debug"
 
 def gen_setups():
     payloads = [4]
-    # workloads = ["X"] # Write Only
-    workloads = ["A"]  # 50:50
+    workloads = ["X"] # Write Only
+    # workloads = ["A"]  # 50:50
     # workloads = ["Y"] # 60:40
-    records = [1000000]
+    records = [100000] # 100, 1000, 10000, ...
     threads = [64]
-    # threads = [64]
-    skews = [0.8]
-    # skews = [0.8]
-    repss = [10]
+    skews = [0.0, 0.99] # 0.0 - 0.99
+    repss = [20]
 
     return [
         [
-            [str(payload)],
+            [protocol, str(payload)],
             [
+                protocol,
                 workload,
                 str(record),
                 str(thread),
@@ -51,6 +52,7 @@ def gen_setups():
                 str(reps),
             ],
         ]
+        for protocol in protocols
         for payload in payloads
         for workload in workloads
         for record in records
@@ -67,11 +69,14 @@ def build():
     if not os.path.exists("./log"):
         os.mkdir("./log")  # compile logs
     for setup in gen_setups():
-        [[payload], _] = setup
+        [[protocol, payload], _] = setup
         print("Compiling " + " PAYLOAD_SIZE=" + payload)
         logfile = "_PAYLOAD_SIZE_" + payload + ".compile_log"
         os.system(
-            "cmake .. -DLOG_LEVEL=0 -DCMAKE_BUILD_TYPE=Debug -DBENCHMARK=YCSB -DCC_ALG=SERVAL"
+            "cmake .. -DLOG_LEVEL=0 -DCMAKE_BUILD_TYPE="
+            + CMAKE_BUILD_TYPE +
+            " -DBENCHMARK=YCSB -DCC_ALG="
+            + protocol.upper()
             + " -DPAYLOAD_SIZE="
             + payload
             + " > ./log/"
@@ -90,14 +95,14 @@ def run_all():
     os.chdir("./build/bin")  # move to bin
     if not os.path.exists("./res"):
         os.mkdir("./res")  # create result directory inside bin
-        os.mkdir("./tmp")
+        os.mkdir("./res/tmp")
     for setup in gen_setups():
         [
-            [payload],
+            [protocol, payload],
             args,
         ] = setup
 
-        title = "ycsb" + payload + "_serval"
+        title = "ycsb" + payload + "_" + protocol
 
         print("[{}: {}]".format(title, " ".join([str(NUM_SECONDS), *args])))
 
@@ -105,11 +110,12 @@ def run_all():
             dt_now = datetime.datetime.now()
             print(" Trial:" + str(exp_id))
             ret = os.system(
-                "numactl --interleave=all ./"
+                # "numactl --interleave=all ./" # 多分これするとregionが壊れる
+                "./"
                 + title
                 + " "
                 + " ".join([str(NUM_SECONDS), *args, str(exp_id)])
-                + " > ./tmp/"
+                + " > ./res/tmp/"
                 + str(dt_now.isoformat())
                 + " 2>&1"
             )
@@ -130,33 +136,44 @@ def plot_all():
     # plot throughput
     os.chdir(path)  # move to result file
 
-    exp_param = pd.read_csv("header", sep=",").columns.tolist()
-    ycsb_param = pd.read_csv("ycsb_param", sep=",").columns.tolist()
-    countable_param = [i for i in exp_param if i not in ycsb_param]
-    ycsb_param.remove("exp_id")
-    df = pd.read_csv("result.csv", sep=",", names=exp_param)
+    header = pd.read_csv("header", sep=",").columns.tolist()
+    compile_param = pd.read_csv("compile_params", sep=",").columns.tolist()
+    runtime_param = pd.read_csv("runtime_params", sep=",").columns.tolist()
+    df = pd.read_csv("result.csv", sep=",", names=header)
+
+    dfs = {}
+    grouped_dfs = {}
+    for protocol in protocols:
+        protocol_df = df[df["protocol"] == protocol]
+        protocol_grouped_df = protocol_df.groupby(runtime_param, as_index=False).sum()
+        for column in protocol_grouped_df.columns:
+            # if df[column].dtypes != "object":
+            #     protocol_grouped_df[column] = protocol_grouped_df[column] / 64  # todo
+            if column in ["InitializationTime","ExecutionTime","WaitInInitialization","WaitInExecution"]:
+                protocol_grouped_df[column] = protocol_grouped_df[column] / 64
+        grouped_dfs[protocol] = protocol_grouped_df
+        dfs[protocol] = protocol_df
 
     if not os.path.exists("./plots"):
         os.mkdir("./plots")  # create plot directory inside res
     os.chdir("./plots")
-
-    df = df.groupby(ycsb_param, as_index=False).sum()
-    for type in countable_param:
-        df[type] = df[type] / NUM_SECONDS / NUM_EXPERIMENTS_PER_SETUP
-
+    
+    plot_params = ["TotalTime", "InitializationTime", "ExecutionTime","WaitInInitialization","WaitInExecution"]
     my_plot = plot.Plot(
         VARYING_TYPE,
         x_label,
-        CLOCKS_PER_US,
-        exp_param,  # change
+        protocols,
+        plot_params,  # change
     )  # change
-    my_plot.plot_tps(df)
-    my_plot.plot_avg_latency(df)
+
+    my_plot.plot_all_param_all_protocol(grouped_dfs)
+    my_plot.plot_all_param_per_core("caracal", dfs["caracal"])
+    my_plot.plot_all_param_per_core("serval", dfs["serval"])
 
     os.chdir("../../../../")  # go back to base directory
 
 
 if __name__ == "__main__":
-    build()
-    run_all()
-    # plot_all()
+    # build()
+    # run_all()
+    plot_all()

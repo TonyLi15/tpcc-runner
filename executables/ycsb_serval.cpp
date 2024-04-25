@@ -1,20 +1,24 @@
 #include <unistd.h>
 
+#include <bitset>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "benchmarks/ycsb/include/config.hpp"
 #include "benchmarks/ycsb/include/tx_runner.hpp"
 #include "benchmarks/ycsb/include/tx_utils.hpp"
 #include "indexes/masstree.hpp"
 #include "protocols/common/timestamp_manager.hpp"
+#include "protocols/serval/include/operation_set.hpp"
 #include "protocols/serval/include/region.hpp"
-#include "protocols/serval/include/rendezvous_barrier.hpp"
-#include "protocols/serval/include/request.hpp"
 #include "protocols/serval/include/serval.hpp"
 #include "protocols/serval/include/value.hpp"
 #include "protocols/serval/ycsb/initializer.hpp"
 #include "protocols/serval/ycsb/transaction.hpp"
+#include "protocols/ycsb_common/definitions.hpp"
+#include "protocols/ycsb_common/make_transactions.hpp"
+#include "protocols/ycsb_common/rendezvous_barrier.hpp"
 #include "utils/logger.hpp"
 #include "utils/numa.hpp"
 #include "utils/tsc.hpp"
@@ -31,147 +35,129 @@ using Record = Payload<PAYLOAD_SIZE>;
 using Record = Payload<PAYLOAD_SIZE>;
 #endif
 
-#define NUM_TXS_IN_ONE_EPOCH 4096  // the number of transactions in one epoch
-#define NUM_ALL_TXS       \
-  (NUM_TXS_IN_ONE_EPOCH * \
-   1)  // total number of transactions executed in the exeperiment
-#define TOTAL_EPOCH (NUM_ALL_TXS / NUM_TXS_IN_ONE_EPOCH)
-#define CLOCKS_PER_US 2100
-#define CLOCKS_PER_MS (CLOCKS_PER_US * 1000)
-#define CLOCKS_PER_S (CLOCKS_PER_MS * 1000)
+template <typename Protocol>
+void do_initialization_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
+                             Protocol& serval, std::vector<OperationSet>& txs) {
+  for (uint64_t i = 0; i < NUM_TXS_IN_ONE_EPOCH_IN_ONE_CORE; i++) {
+    serval.txid_ = (worker_id * 64) + i;  // sequential assignment
 
-void make_transactions(std::vector<Request>& txs) {
-  const Config& c = get_config();
+    std::vector<Operation>& w_set_ =
+        txs[head_in_the_epoch + (worker_id * 64) + i]
+            .w_set_;  // sequential assignment
 
-  for (uint64_t tx_id = 0; tx_id < txs.size(); tx_id++) {
-    for (uint64_t j = 0; j < c.get_reps_per_txn(); j++) {
-      int operationType = urand_int(1, 100);
-      int key = zipf_int(c.get_contention(), c.get_num_records());
-
-      if (operationType <= c.get_read_propotion()) {
-        txs[tx_id].operations_.emplace_back(Operation::Ope::Read, key);
-      } else {
-        txs[tx_id].operations_.emplace_back(Operation::Ope::Update, key);
-        txs[tx_id].write_set_.emplace_back(Operation::Ope::Update, key);
-      }
+    for (size_t j = 0; j < w_set_.size(); j++) {
+      serval.append_pending_version(get_id<Record>(), w_set_[j].index_,
+                                    w_set_[j].pending_);
     }
+    serval.terminate_transaction();
   }
 }
 
 template <typename Protocol>
-void run_tx(RendezvousBarrier& rend, RendezvousBarrier& init_phase,
-            RendezvousBarrier& exec_phase,
-            [[maybe_unused]] ThreadLocalData& t_data, uint32_t worker_id,
-            [[maybe_unused]] TimeStampManager<Protocol>& tsm,
-            RowRegionController& rrc) {
-  const Config& c = get_config();
-
-  int txs_size = NUM_ALL_TXS / c.get_num_threads();
-  std::vector<Request> txs(txs_size);
-  make_transactions(txs);
-
-  // Pre-Initialization Phase
-  // Core Assignment -> serval: sequential
-  pid_t tid = gettid();
-  Numa numa(tid, worker_id);
-  assert(numa.cpu_ == worker_id);  // TODO: 削除
-  Protocol serval(numa.cpu_, worker_id, rrc);
-
-  rend.send_ready_and_wait_start();  // rendezvous barrier
-
-  // ============ experiment start ============
-
-  uint64_t epoch = 1;
-  while (epoch <= TOTAL_EPOCH) {
-    uint64_t start_tx = (epoch - 1) * 64;
-
-    init_phase.send_ready_and_wait_start();  // rendezvous barrier
-
-    serval.epoch_ = epoch;
-
-    // Initialization Phase: Append Pending version concurrently
-    for (uint64_t i = 0; i < 64; i++) {
-      assert(i < txs.size());
-      serval.txid_ = (worker_id * 64) + i;
-      std::vector<Operation>& write_set = txs[start_tx + i].write_set_;
-      for (size_t j = 0; j < write_set.size(); j++) {
-        serval.append_pending_version(get_id<Record>(), write_set[j].index_);
-      }
-    }
-
-    exec_phase.send_ready_and_wait_start();  // rendezvous barrier
-
-    // // Execution Phase:
-    for (uint64_t i = 0; i < 64; i++) {
-      assert(i < txs.size());
-      serval.txid_ = (worker_id * 64) + i;
-      std::vector<Operation>& ope_set =
-          txs[start_tx + i].operations_;  // Txθ's operations
-
-      for (size_t j = 0; j < ope_set.size(); j++) {
-        if (ope_set[j].ope_ == Operation::Ope::Read) {
-          // serval.read(get_id<Record>(), ope_set[j].index_);
-        } else if (ope_set[j].ope_ == Operation::Ope::Update) {
-          serval.upsert(get_id<Record>(), ope_set[j].index_);
+void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
+                        Protocol& serval, std::vector<OperationSet>& txs) {
+  for (uint64_t i = 0; i < NUM_TXS_IN_ONE_EPOCH_IN_ONE_CORE; i++) {
+    assert(i < txs.size());
+    serval.txid_ = (i * 64) + worker_id;  // round-robin assignment
+    std::vector<Operation>& rw_set =
+        txs[head_in_the_epoch + (i * 64) + worker_id]
+            .rw_set_;  // round-robin assignment
+    for (size_t j = 0; j < rw_set.size(); j++) {
+      if (rw_set[j].ope_ == Operation::Ope::Read) {
+        serval.read(get_id<Record>(), rw_set[j].index_);
+      } else if (rw_set[j].ope_ == Operation::Ope::Update) {
+        if (rw_set[j].pending_) {  // TODO: txθ: w(1)...w(1)
+          serval.write(get_id<Record>(), rw_set[j].pending_);
         }
       }
     }
-
-    epoch++;
   }
-
-  // ============ experiment end ============
 }
 
-void epoch_controller(RendezvousBarrier& init_phase,
-                      RendezvousBarrier& exec_phase) {
-  /*
-  repeat the procedure below until all transactions is processed.
+void rendezvous_barrier_to_start(RendezvousBarrier::BarrierType type,
+                                 RendezvousBarrier& rend, uint32_t worker_id) {
+  if (worker_id == 0) {
+    // do parent work
+    rend.wait_all_children_and_send_start(type);
+  } else {
+    // do children work
+    rend.send_ready_and_wait_start(type);
+  }
+}
 
-  one epoch:
-  1. initialization phase
-  2. synchronization
-  3. execution phase
-  4. synchronization
-  */
+template <typename Protocol>
+void run_tx(RendezvousBarrier& rend, [[maybe_unused]] ThreadLocalData& t_data,
+            uint32_t worker_id,
+            [[maybe_unused]] TimeStampManager<Protocol>& tsm,
+            RowRegionController& rrc, std::vector<OperationSet>& txs) {
+  uint64_t init_total = 0, exec_total = 0;
+  uint64_t init_start, init_end, exec_start, exec_end;
+  [[maybe_unused]] Config& c = get_mutable_config();
+
+  // Pre-Initialization Phase
+  pid_t tid = gettid();
+  Numa numa(tid, worker_id);
+  assert(numa.cpu_ == worker_id);  // TODO: 削除
+  t_data.stat.record(Stat::MeasureType::Core, numa.cpu_);
+  t_data.stat.record(Stat::MeasureType::Node, numa.node_);
+
+  Protocol serval(numa.cpu_, worker_id, rrc);
+
+  rendezvous_barrier_to_start(RendezvousBarrier::BarrierType::StartExp, rend,
+                              worker_id);
+  uint64_t exp_start = worker_id == 0 ? rdtscp() : 0;
 
   uint64_t epoch = 1;
+  while (epoch <= NUM_EPOCH) {
+    uint64_t head_in_the_epoch = (epoch - 1) * NUM_TXS_IN_ONE_EPOCH;
 
-  while (epoch <= TOTAL_EPOCH) {
-    // initialization phase
-    init_phase.wait_all_children();
-    exec_phase.initialize();
-    init_phase.send_start();  // new epoch start
+    serval.epoch_ = epoch;
 
-    // execution phase
-    exec_phase.wait_all_children();
-    init_phase.initialize();
-    exec_phase.send_start();
+    init_start = rdtscp();
+    do_initialization_phase(worker_id, head_in_the_epoch, serval, txs);
+    init_end = rdtscp();
+    init_total = init_total + (init_end - init_start);
 
-    // epoch end
-    epoch++;
+    rendezvous_barrier_to_start(RendezvousBarrier::BarrierType::StartExecPhase,
+                                rend, worker_id);
+
+    exec_start = rdtscp();
+    do_execution_phase(worker_id, head_in_the_epoch, serval, txs);
+    exec_end = rdtscp();
+    exec_total = exec_total + (exec_end - exec_start);
+
+    rendezvous_barrier_to_start(RendezvousBarrier::BarrierType::StartNewEpoc,
+                                rend, worker_id);
+    epoch++;  // new epoch start
   }
+  uint64_t exp_end = worker_id == 0 ? rdtscp() : 0;
+
+  t_data.stat.record(Stat::MeasureType::TotalTime, exp_end - exp_start);
+  t_data.stat.record(Stat::MeasureType::InitializationTime, init_total);
+  t_data.stat.record(Stat::MeasureType::ExecutionTime, exec_total);
 }
 
 int main(int argc, const char* argv[]) {
-  if (argc != 8) {
+  if (argc != 9) {
     printf(
-        "seconds workload_type(A,B,C,F) num_records num_threads skew "
+        "seconds protocol workload_type(A,B,C,F) num_records num_threads skew "
         "reps_per_txn exp_id\n");
     exit(1);
   }
 
   [[maybe_unused]] int seconds = std::stoi(argv[1], nullptr, 10);
-  std::string workload_type = argv[2];
-  uint64_t num_records = static_cast<uint64_t>(std::stoi(argv[3], nullptr, 10));
-  int num_threads = std::stoi(argv[4], nullptr, 10);
-  double skew = std::stod(argv[5]);
-  int reps = std::stoi(argv[6], nullptr, 10);
-  [[maybe_unused]] int exp_id = std::stoi(argv[7], nullptr, 10);
+  std::string protocol = argv[2];
+  std::string workload_type = argv[3];
+  uint64_t num_records = static_cast<uint64_t>(std::stoi(argv[4], nullptr, 10));
+  int num_threads = std::stoi(argv[5], nullptr, 10);
+  double skew = std::stod(argv[6]);
+  int reps = std::stoi(argv[7], nullptr, 10);
+  [[maybe_unused]] int exp_id = std::stoi(argv[8], nullptr, 10);
 
   assert(seconds > 0);
 
   Config& c = get_mutable_config();
+  c.set_protocol(protocol);
   c.set_workload_type(workload_type);
   c.set_num_records(num_records);
   c.set_num_threads(num_threads);
@@ -195,39 +181,22 @@ int main(int argc, const char* argv[]) {
   std::vector<ThreadLocalData> t_data(num_threads);
 
   RowRegionController rrc;
+  RendezvousBarrier rend(num_threads - 1);
 
-  RendezvousBarrier rend(num_threads);
-  RendezvousBarrier init_phase(num_threads);
-  RendezvousBarrier exec_phase(num_threads);
+  std::vector<OperationSet> txs(NUM_ALL_TXS);
+  make_transactions(txs);
 
   for (int i = 0; i < num_threads; i++) {
-    threads.emplace_back(run_tx<Protocol>, std::ref(rend), std::ref(init_phase),
-                         std::ref(exec_phase), std::ref(t_data[i]), i,
-                         std::ref(tsm), std::ref(rrc));
+    threads.emplace_back(run_tx<Protocol>, std::ref(rend), std::ref(t_data[i]),
+                         i, std::ref(tsm), std::ref(rrc), std::ref(txs));
   }
-
-  uint64_t exp_start, exp_end;
-  // rendezvous barrier
-  rend.wait_all_children();
-  rend.send_start();
-
-  // expriment start
-  exp_start = rdtscp();
-  epoch_controller(init_phase, exec_phase);
   for (int i = 0; i < num_threads; i++) {
     threads[i].join();
   }
-  exp_end = rdtscp();
-  // expriment end
 
-  long double exec_sec = (exp_end - exp_start) / CLOCKS_PER_S;
-  std::cout << "実行時間[MS]： " << (exp_end - exp_start) / CLOCKS_PER_MS
-            << std::endl;
-  std::cout << "実行時間[S]： " << (exp_end - exp_start) / CLOCKS_PER_S
-            << std::endl;
-  std::cout << "実行時間[S]： " << exec_sec << std::endl;
-  std::cout << "処理したトランザクション数(NUM_ALL_TXS)： " << NUM_ALL_TXS
-            << std::endl;
-  std::cout << "TPS： " << (long double)NUM_ALL_TXS / exec_sec << std::endl;
-  std::cout << "EPOCH数(TOTAL_EPOCH)： " << TOTAL_EPOCH << std::endl;
+  Stat stat;
+  std::string filepath = stat.prepare_result_file();
+  for (size_t i = 0; i < t_data.size(); i++) {
+    t_data[i].stat.log(filepath);
+  };
 }

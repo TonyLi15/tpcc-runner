@@ -17,17 +17,20 @@ CMakeFiles/ycsb4_serval.dir/executables/ycsb_serval.cpp.o
  ../protocols/common/schema.hpp
  ../protocols/common/timestamp_manager.hpp
  ../protocols/common/transaction_id.hpp
+ ../protocols/serval/include/operation_set.hpp
  ../protocols/serval/include/readwriteset.hpp
  ../protocols/serval/include/region.hpp
- ../protocols/serval/include/rendezvous_barrier.hpp
- ../protocols/serval/include/request.hpp
  ../protocols/serval/include/serval.hpp
  ../protocols/serval/include/value.hpp
  ../protocols/serval/ycsb/initializer.hpp
  ../protocols/serval/ycsb/transaction.hpp
  ../protocols/silo/include/tidword.hpp
+ ../protocols/ycsb_common/definitions.hpp
+ ../protocols/ycsb_common/make_transactions.hpp
  ../protocols/ycsb_common/record_misc.hpp
+ ../protocols/ycsb_common/rendezvous_barrier.hpp
  ../utils/atomic_wrapper.hpp
+ ../utils/bitmap.hpp
  ../utils/logger.hpp
  ../utils/numa.hpp
  ../utils/random.hpp

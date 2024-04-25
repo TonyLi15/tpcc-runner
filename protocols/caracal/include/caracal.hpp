@@ -6,12 +6,14 @@
 #include <stdexcept>
 
 #include "indexes/masstree.hpp"
+#include "protocols/caracal/include/buffer.hpp"
 #include "protocols/caracal/include/readwriteset.hpp"
-#include "protocols/caracal/include/region.hpp"
 #include "protocols/caracal/include/value.hpp"
 #include "protocols/common/timestamp_manager.hpp"
 #include "protocols/common/transaction_id.hpp"
+#include "utils/bitmap.hpp"
 #include "utils/logger.hpp"
+#include "utils/tsc.hpp"
 #include "utils/utils.hpp"
 
 template <typename Index>
@@ -23,390 +25,309 @@ class Caracal {
   using LeafNode = typename Index::LeafNode;
   using NodeInfo = typename Index::NodeInfo;
 
-  Caracal(uint64_t core_id, TxID txid, std::vector<RowRegion>& my_regions)
-      : core_id_(core_id), txid_(txid), regions_(my_regions), cur_ptr_(0) {}
+  Caracal(uint64_t core_id, uint64_t txid, RowBufferController& rrc, Stat& stat)
+      : core_(core_id), txid_(txid), rrc_(rrc), stat_(stat) {}
 
   ~Caracal() {}
 
-  void append_pending_version(TableID table_id, Key key) {
-    // const Schema& sch = Schema::get_schema();
+  void terminate_transaction() {
+    for (TableID table_id : tables) {
+      auto& w_table = ws.get_table(table_id);
+      w_table.clear();
+    }
+    tables.clear();
+  }
+
+  void append_pending_version(TableID table_id, Key key, Version*& pending) {
     Index& idx = Index::get_index();
 
-    // size_t record_size = sch.get_record_size(table_id);
     tables.insert(table_id);
-    auto& rw_table = rws.get_table(table_id);
-    auto rw_iter = rw_table.find(key);
+    std::vector<Key>& w_table = ws.get_table(table_id);
+    typename std::vector<Key>::iterator w_iter =
+        std::find(w_table.begin(), w_table.end(), key);
 
-    Version* pending_version = nullptr;
-
-    // Case of not read and written
-    if (rw_iter == rw_table.end()) {
+    // Case of not append occur
+    if (w_iter == w_table.end()) {
       Value* val;
       typename Index::Result res =
           idx.find(table_id, key, val);  // find corresponding index in masstree
 
       if (res == Index::Result::NOT_FOUND) {
+        assert(false);
         throw std::runtime_error(
             "masstree NOT_FOUND");  // TODO: この場合、どうするかを考える
         return;
       }
 
       // Got value from masstree
-      RowRegion* region = __atomic_load_n(&val->row_region_, __ATOMIC_SEQ_CST);
 
-      if (region == nullptr) {  // Per-core version array does not exist (_0)
-        if (val->try_lock()) {  // Successfully got the try lock (00)
-          pending_version = append_to_global_version_chain_00(val);
-          goto FINISH;
-        }
+      do_append_pending_version(val, pending);
+      assert(pending);
 
-        // Failed to get the lock (10)
-        pending_version = install_ptr_to_row_region_10(val);
-        goto FINISH;
-      }
-
-      // region is not nullptr -> Per-core version array exist (_1)
-      pending_version = update_row_region__1(val);
-      goto FINISH;
+      // Place it in writeset
+      auto& w_table = ws.get_table(table_id);
+      w_table.emplace_back(key);
     }
 
-  FINISH:
-    // Place it into readwriteset
-    Value* val = reinterpret_cast<Value*>(
-        MemoryAllocator::aligned_allocate(sizeof(Value)));
-    auto new_iter = rw_table.emplace_hint(
-        rw_iter, std::piecewise_construct, std::forward_as_tuple(key),
-        std::forward_as_tuple(pending_version->rec, nullptr,
-                              ReadWriteType::UPDATE, false, val,
-                              pending_version));  // TODO: チェックする
-    // Place it in writeset
-    auto& w_table = ws.get_table(table_id);
-    w_table.emplace_back(key, new_iter);
-
-    // ========================================================
-    // TODO: Case of found in read and written set
+    // TODO: Case of found in read or written set
   }
 
   const Rec* read(TableID table_id, Key key) {
     Index& idx = Index::get_index();
-    // const Schema& sch = Schema::get_schema();
-    // size_t record_size = sch.get_record_size(table_id);
+
     Value* val;
     typename Index::Result res =
         idx.find(table_id, key, val);  // find corresponding index in masstree
+
     if (res == Index::Result::NOT_FOUND) {
+      assert(false);
       throw std::runtime_error(
           "masstree NOT_FOUND");  // TODO: この場合、どうするかを考える
       return nullptr;
     }
 
-    // Use val to find visible version
+    Version* visible = nullptr;
 
-    // ====== 1. load core bitmap and identify the core which create the visible
-    // version ======
-
-    // load current core's core bitmap
-    uint64_t current_core_bitmap = val->core_bitmap;
-
-    // my_core_pos -> spot the current core's digit in core bitmap (range: 0 -
-    // 63)
-    int my_core_pos = core_id_ % 64;
-
-    // latest_core_pos -> spot the core that occurs the latest update
-    int latest_core_pos =
-        mask_and_find_latest_pos(current_core_bitmap, my_core_pos);
-
-    // return nullptr if no visible version available
-    if (latest_core_pos == 0) {
-      return nullptr;
-    }
-    // ===========================================================================================
-
-    // ====== 2. load the transaction bitmap from the identified core ======
-
-    // load current per-core version array which potentially has visible version
-    PerCoreVersionArray* current_version_array =
-        val->row_region_->arrays_[latest_core_pos];
-    // ===========================================================================================
-
-    // ====== 3. identify visible version by calculating transaction_bitmap
-    // ======
-
-    // load curent transaction bitmap from current version array
-    uint64_t current_transaction_bitmap =
-        current_version_array->transaction_bitmap;
-
-    // my_tx_pos -> spot the current tx's digit in tx bitmap
-    int my_tx_pos = static_cast<int>(txid_.thread_id) % 64;
-
-    // calculate latest_tx_num
-    int latest_tx_pos =
-        mask_and_find_latest_pos(current_transaction_bitmap, my_tx_pos);
-
-    // the current per-core version array does not have the visible version,
-    // needs to find visible version from the previous core
-    if (latest_tx_pos == 0) {
-    AGAIN:
-      // load previous core's version array and transaction bitmap
-      PerCoreVersionArray* previous_version_array =
-          val->row_region_->arrays_[latest_core_pos - 1];
-      uint64_t previous_transaction_bitmap =
-          previous_version_array->transaction_bitmap;
-
-      // find the visible version from previous core (no mask needed)
-      int previous_latest_tx_pos = find_latest_pos(previous_transaction_bitmap);
-      if (previous_latest_tx_pos == 0) {
-        goto AGAIN;
-      }
-      Version* previous_latest_version =
-          previous_version_array->slots_[previous_latest_tx_pos];
-      return previous_latest_version->rec;
+    // any append is not executed in the row in the current epoch
+    // and read the final state in one previous epoch
+    uint64_t epoch = val->epoch_;
+    if (epoch != epoch_) {
+      visible = val->master_;
+      return execute_read(visible);
     }
 
-    Version* latest_version = current_version_array->slots_[latest_tx_pos];
-    // ===========================================================================================
+    // append is executed in the current epoch
+    assert(epoch == epoch_);
+    auto [txid_in_global_array, visible_in_global_array] =
+        val->global_array_.search_visible_version(txid_);
+    assert(txid_in_global_array < (int)txid_);
 
-    return latest_version->rec;
+    if (visible_in_global_array) {
+      visible = visible_in_global_array;
+      return wait_stable_and_execute_read(visible);
+    } else {
+      visible = val->master_;
+      return execute_read(visible);
+    }
+
+    assert(false);
+    return nullptr;
   }
 
-  Rec* write(TableID table_id, Key key) { return upsert(table_id, key); }
+  Rec* write(TableID table_id, Version* pending) {
+    return upsert(table_id, pending);
+  }
 
-  Rec* upsert(TableID table_id, Key key) {
+  Rec* upsert(TableID table_id, Version* pending) {
     const Schema& sch = Schema::get_schema();
     size_t record_size = sch.get_record_size(table_id);
-    auto& rw_table = rws.get_table(table_id);
-    auto rw_iter = rw_table.find(key);
-
-    if (rw_iter == rw_table.end()) {
-      // TODO: この場合は絶対に呼ばれないはず
-      throw std::runtime_error("masstree NOT_FOUND");
-      return nullptr;
-    }
-
-    Version* pending_version = rw_iter->second.pending_version;
-    pending_version->status = Version::VersionStatus::UPDATED;
 
     Rec* rec = MemoryAllocator::aligned_allocate(record_size);
-    pending_version->rec = rec;  // write
-    return pending_version->rec;
+
+    __atomic_store_n(&pending->rec, rec, __ATOMIC_SEQ_CST);  // write
+    __atomic_store_n(&pending->status, Version::VersionStatus::STABLE,
+                     __ATOMIC_SEQ_CST);
+    return rec;
   }
 
-  bool precommit() { return true; }
+  // called in end of the initialization phase
+  // TODO: try_lockが失敗した時の実装
+  void finalize_batch_append() {
+    for (const auto& [val, buffer] : appended_core_buffers_) {
+      // bufferに残っているpendingsをバッチアペンドする
+      uint64_t start = rdtscp();
+      while (!val->try_lock()) {
+        // spin
+      };
+      stat_.add(Stat::MeasureType::WaitInInitialization, rdtscp() - start);
+      val->global_array_.batch_append(buffer);
+      val->unlock();
+    }
+  }
 
-  void abort() {}
-
-  uint64_t core_id_;
-  TxID txid_;
-  std::vector<RowRegion>& regions_;
-  uint64_t regions_tail_;
-  int cur_ptr_;
+  uint64_t core_;
+  uint64_t txid_;
+  uint64_t epoch_ = 0;
 
  private:
+  WriteSet<Key> ws;  // write set
   std::set<TableID> tables;
-  ReadWriteSet<Key, Value> rws;  // read write set
-  WriteSet<Key, Value> ws;       // write set
 
-  // 24/3/23 -> move all from public to private
-  // 24/3/21 -> change type from unsigned int to uint64_t
-  uint64_t clear_left(uint64_t bits, int pos) {
-    uint64_t mask = (1ULL << (pos + 1)) - 1;
-    return bits & mask;
-  }
+  RowBuffer* spare_buffer_ = nullptr;
 
-  uint64_t clear_right(uint64_t bits, int pos) {
-    uint64_t mask = ~((1ULL << pos) - 1);
-    return bits & mask;
-  }
+  RowBufferController& rrc_;
 
-  // Apply type casting for buitlin bit functions
+  Stat& stat_;
 
-  // returns the location of 1st "1" from right
-  template <typename T>
-  int first_one_from_right(T x) {
-    static_assert(std::is_same_v<T, uint64_t>, "T must be uint64_t");
-    return __builtin_ffsll(x);
-  }
+  std::unordered_map<Value*, PerCoreBuffer*> appended_core_buffers_;
 
-  // returns the number of leading "0" from left
-  template <typename T>
-  int num_leading_zeros(T x) {
-    static_assert(std::is_same_v<T, uint64_t>, "T must be uint64_t");
-    return __builtin_clzll(x);
-  }
+  void do_append_pending_version(Value* val, Version*& pending) {
+    assert(!pending);
 
-  // returns the number of trailing "0" from left
-  template <typename T>
-  int num_trailing_zeros(T x) {
-    static_assert(std::is_same_v<T, uint64_t>, "T must be uint64_t");
-    return __builtin_ctzll(x);
-  }
+    // all threads wait until the first thread to arrive at the val
+    // initialize the val and update the val->epoch_
+    epoch_guard(val, pending);
+    if (pending) return;
 
-  // find the most-left "1" after clearing all bits from pos with mask
-  int mask_and_find_latest_pos(uint64_t bits, int pos) {
-    uint64_t masked_bits = clear_left(bits, pos);
-    return (63 - num_leading_zeros(masked_bits));
-  }
+    // val->epoch_ == epoch_
+    RowBuffer* cur_buffer =
+        __atomic_load_n(&val->row_buffer_, __ATOMIC_SEQ_CST);
 
-  // find the most-left "1" after clearing all bitswithout masking
-  int find_latest_pos(uint64_t bits) { return (63 - num_leading_zeros(bits)); }
-
-  Version* append_to_global_version_chain_00(Value* val) {
-    Version* new_version = create_pending_version();
-
-    // Append pending version
-    new_version->prev = val->version;
-    val->version = new_version;
-
-    val->unlock();
-    return new_version;
-  }
-
-  Version* install_ptr_to_row_region_10(Value* val) {
-    RowRegion* return_value;
-    RowRegion& my_region = regions_[cur_ptr_];
-
-    // Install pointer to per-core version array by __atomic_exchange
-    // stores the contents of my_region into val->ptr_to_version_array.
-    // The original value of val->ptr_to_version_array is copied into
-    // return_value.
-    __atomic_exchange(&val->row_region_, &my_region, &return_value,
-                      __ATOMIC_SEQ_CST);
-
-    Version* pending_version = create_pending_version();
-
-    // current thread is the first thread to assign per-core version region of
-    // the data item CAS is successful, rn val->ptr_to_version_array is
-    // my_region
-    if (return_value == nullptr) {
-      cur_ptr_++;  // move cur_ptr_ to next slot
-      my_region.arrays_[core_id_]->append_to_slots(val, core_id_,
-                                                   pending_version, txid_);
-      return pending_version;
+    // the val will or may be contented if the row_buffer_ is already exist.
+    if (may_be_contented(cur_buffer)) {
+      pending = append_to_contented_row(val, cur_buffer->buffers_[core_]);
+      return;
     }
 
-    // other thread already assigned per-core version region of the data item
-    // CAS is unsuccessful, val->ptr_to_version_array has some other addresss
-    // use ptr which other thread already assigned
-    return_value->arrays_[core_id_]->append_to_slots(val, core_id_,
-                                                     pending_version, txid_);
+    // the val is may be uncontented
+    if (val->try_lock()) {
+      pending = append_to_uncontended_row(val);
+      return;
+    }
 
-    return pending_version;
+    // the thread couldn't acquire the lock: the val is getting crowded.
+    RowBuffer* new_buffer;
+
+    if (spare_buffer_) {
+      new_buffer = spare_buffer_;
+      spare_buffer_ = nullptr;
+    } else {
+      new_buffer = rrc_.fetch_new_buffer();
+    }
+
+    assert(cur_buffer == nullptr);
+    if (try_install_new_buffer(val, cur_buffer, new_buffer)) {
+      pending = append_to_contented_row(val, new_buffer->buffers_[core_]);
+      return;
+    }
+
+    // other thread already install new buffer　
+    RowBuffer* other_buffer =
+        __atomic_load_n(&val->row_buffer_, __ATOMIC_SEQ_CST);
+    spare_buffer_ = new_buffer;
+    pending = append_to_contented_row(val, other_buffer->buffers_[core_]);
+    return;
   }
 
-  Version* update_row_region__1(Value* val) {
-    RowRegion my_region = regions_[cur_ptr_];
+  void epoch_guard(Value* val, Version*& pending) {
+    uint64_t epoch;
 
-    // Create pending version, update 2 bitmaps and append to per-core version
-    // array
-    Version* pending_version = create_pending_version();
-    my_region.arrays_[core_id_]->append_to_slots(val, core_id_, pending_version,
-                                                 txid_);
-    return pending_version;
+    while ((epoch = __atomic_load_n(&val->epoch_, __ATOMIC_SEQ_CST)) < epoch_) {
+      /*
+       case1: val->epoch_ < epoch_
+       */
+      assert(epoch < epoch_);
+
+      if (!val->try_lock()) continue;
+
+      assert(val->epoch_ <= epoch_);
+      // 再確認
+      if (val->epoch_ < epoch_) {  // 未初期化
+        // the first transaction in the current epoch to arrive on the val
+        // should initialize the val
+        pending = initialize_the_row_and_append(
+            val);  // call unlock inside the function
+      } else {     // 　初期化ずみ
+        pending =
+            append_to_uncontended_row(val);  // call unlock inside the function
+      }
+
+      return;
+    };
+  }
+
+  Version* initialize_the_row_and_append(Value* val) {
+    // 1. store the final state of one previous epoch to val->master_
+    val->master_ = find_final_state_in_one_previous_epoch(val);
+    assert(val->master_);
+
+    // 2. initialize the global_array_
+    val->global_array_.initialize();
+
+    // 3. append to the global_array_
+    Version* pending = create_pending_version();
+    val->global_array_.append(pending, txid_);
+
+    // 4. update val->epoch_
+    val->epoch_ = epoch_;
+    assert(val->global_array_.is_exist(txid_));
+
+    val->unlock();
+
+    return pending;
+  }
+
+  Version* find_final_state_in_one_previous_epoch(Value* val) {
+    auto [id_global_array, latest_global_array] = val->global_array_.latest();
+
+    assert(latest_global_array);
+
+    return latest_global_array;
+  }
+
+  bool try_install_new_buffer(Value* val, RowBuffer* cur_buffer,
+                              RowBuffer* new_buffer) {
+    assert(cur_buffer == nullptr);
+    return __atomic_compare_exchange_n(&val->row_buffer_, &cur_buffer,
+                                       new_buffer, false, __ATOMIC_SEQ_CST,
+                                       __ATOMIC_SEQ_CST);
+  }
+
+  // lock should be acquired before this function is called
+  Version* append_to_uncontended_row(Value* val) {
+    Version* pending = create_pending_version();
+
+    // Append pending version to global version chain
+    val->global_array_.append(pending, txid_);
+    assert(val->global_array_.is_exist(txid_));
+
+    val->unlock();
+
+    return pending;
+  }
+
+  bool may_be_contented(RowBuffer* row_buffer) { return row_buffer != nullptr; }
+
+  Version* append_to_contented_row(Value* val, PerCoreBuffer* core_buffer) {
+    Version* pending = create_pending_version();
+
+    if (core_buffer->append(pending, txid_)) {
+      // not full
+      appended_core_buffers_.insert({val, core_buffer});  // TODO: 高速化
+    } else {
+      // per core buffer is full and append to global array
+      uint64_t start = rdtscp();
+      while (!val->try_lock()) {
+        // spin
+      };
+      stat_.add(Stat::MeasureType::WaitInInitialization, rdtscp() - start);
+      val->global_array_.batch_append(core_buffer);
+      val->unlock();
+    };
+
+    return pending;
   }
 
   Version* create_pending_version() {
     Version* version = reinterpret_cast<Version*>(
         MemoryAllocator::aligned_allocate(sizeof(Version)));
-    version->prev = nullptr;
     version->rec = nullptr;  // TODO
     version->deleted = false;
     version->status = Version::VersionStatus::PENDING;
     return version;
   }
 
-  void remove_already_inserted(TableID end_table_id, Key end_key,
-                               bool end_exclusive) {
-    Index& idx = Index::get_index();
-    for (TableID table_id : tables) {
-      auto& w_table = ws.get_table(table_id);
-      for (auto w_iter = w_table.begin(); w_iter != w_table.end(); ++w_iter) {
-        Key key = w_iter->first;
-        if (end_exclusive && table_id == end_table_id && key == end_key) return;
-        auto rw_iter = w_iter->second;
-        auto rwt = rw_iter->second.rwt;
-        bool is_new = rw_iter->second.is_new;
-        if (rwt == ReadWriteType::INSERT && is_new) {
-          // On INSERT, insert the record to shared index
-          Value* val = rw_iter->second.val;
-          Version* version = val->version;
-          idx.remove(table_id, key);
-          val->version = nullptr;
-          // GarbageCollector::collect(largest_ts, val);
-          MemoryAllocator::deallocate(version->rec);
-          MemoryAllocator::deallocate(version);
-        }
-        if (!end_exclusive && table_id == end_table_id && key == end_key)
-          return;
-      }
-    }
+  Rec* execute_read(Version* visible) {
+    assert(visible);
+    return visible->rec;
   }
 
-  void unlock_writeset(TableID end_table_id, Key end_key, bool end_exclusive) {
-    for (TableID table_id : tables) {
-      auto& w_table = ws.get_table(table_id);
-      for (auto w_iter = w_table.begin(); w_iter != w_table.end(); ++w_iter) {
-        if (end_exclusive && table_id == end_table_id &&
-            w_iter->first == end_key)
-          return;
-        auto rw_iter = w_iter->second;
-        Value* val = rw_iter->second.val;
-        val->unlock();
-        if (!end_exclusive && table_id == end_table_id &&
-            w_iter->first == end_key)
-          return;
-      }
-    }
-  }
-
-  // Acquire val->lock() before calling this function
-  Version* get_correct_version(Value* val) {
-    Version* version = val->version;
-
-    // look for the latest version with write_ts <= start_ts
-    // while (version != nullptr && start_ts < version->write_ts) {
-    //   version = version->prev;
-    // }
-
-    return version;  // this could be nullptr
-  }
-
-  // Acquire val->lock() before calling this function
-  void delete_from_tree(TableID table_id, Key key, Value* val) {
-    Index& idx = Index::get_index();
-    idx.remove(table_id, key);
-    Version* version = val->version;
-    val->version = nullptr;
-    // GarbageCollector::collect(largest_ts, val);
-    MemoryAllocator::deallocate(version->rec);
-    MemoryAllocator::deallocate(version);
-    return;
-  }
-
-  // Acquire val->lock() before calling this function
-  void gc_version_chain(Value* val) {
-    Version* gc_version_plus_one = nullptr;
-    Version* gc_version = val->version;
-
-    // // look for the latest version with write_ts <= start_ts
-    // while (gc_version != nullptr && smallest_ts < gc_version->write_ts) {
-    //   gc_version_plus_one = gc_version;
-    //   gc_version = gc_version->prev;
-    // }
-
-    if (gc_version == nullptr) return;
-
-    // keep one
-    gc_version_plus_one = gc_version;
-    gc_version = gc_version->prev;
-
-    gc_version_plus_one->prev = nullptr;
-
-    Version* temp;
-    while (gc_version != nullptr) {
-      temp = gc_version->prev;
-      MemoryAllocator::deallocate(gc_version->rec);
-      MemoryAllocator::deallocate(gc_version);
-      gc_version = temp;
-    }
+  Rec* wait_stable_and_execute_read(Version* visible) {
+    assert(visible);
+    // while (__atomic_load_n(&visible->status, __ATOMIC_SEQ_CST) ==
+    //        Version::VersionStatus::PENDING) {
+    //   // spin
+    // }  // TODO: やばい
+    return execute_read(visible);
   }
 };

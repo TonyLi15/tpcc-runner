@@ -3,65 +3,29 @@
 #include <cstdint>
 #include <mutex>
 
+#include "protocols/caracal/include/buffer.hpp"
 #include "protocols/common/readwritelock.hpp"
-#include "protocols/serval/include/region.hpp"
 #include "utils/atomic_wrapper.hpp"
-
-// 前方宣言
-class RowRegion;
-
-class Version {
- public:
-  enum class VersionStatus { PENDING, UPDATED };  // status of version
-
-  alignas(64) uint64_t read_ts;  // latest read timestamp (mutable: read)
-  uint64_t write_ts;             // latest write timestamp (immutable)
-  Version* prev;                 // previous version (mutable: gc)
-  void* rec;                     // nullptr if deleted = true (immutable)
-  bool deleted;                  // (immutable)
-  VersionStatus status;
-
-  // update read timestamp if it is less than ts
-  void update_readts(uint64_t ts) {
-    uint64_t current_readts = load_acquire(read_ts);
-    if (ts < current_readts) return;
-    store_release(read_ts, ts);
-  }
-
-  uint64_t get_readts() { return load_acquire(read_ts); }
-};
 
 template <typename Version_>
 struct Value {
   using Version = Version_;
-  RWLock rwl;
-  Version* version;  // Global Version Chain
+  alignas(64) RWLock rwl;
+  uint64_t epoch_ = 0;
+
+  Version* master_ = nullptr;  // final state
+
+  GlobalVersionArray global_array_;  // Global Version Array
 
   // For contended versions
-  RowRegion* row_region = nullptr;  // Pointer to per-core version array
-  uint64_t core_bitmap;
+  RowBuffer* row_buffer_ = nullptr;  // Pointer to per-core buffer
+  uint64_t core_bitmap_ = 0;
 
-  void initialize() {
-    rwl.initialize();
-    version = nullptr;
-  }
+  void initialize() { rwl.initialize(); }
 
   void lock() { rwl.lock(); }
 
   bool try_lock() { return rwl.try_lock(); }
 
   void unlock() { rwl.unlock(); }
-
-  bool is_detached_from_tree() { return (version == nullptr); }
-
-  bool is_empty() { return (version->deleted && version->prev == nullptr); }
-
-  void trace_version_chain() {
-    Version* temp = version;
-    while (temp != nullptr) {
-      LOG_TRACE("rs: %lu, ws: %lu, deleted: %s", temp->read_ts, temp->write_ts,
-                temp->deleted ? "true" : "false");
-      temp = temp->prev;
-    }
-  }
 };

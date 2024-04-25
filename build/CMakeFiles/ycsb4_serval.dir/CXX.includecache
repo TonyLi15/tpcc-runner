@@ -67,8 +67,16 @@ utils/logger.hpp
 ../benchmarks/ycsb/include/utils/logger.hpp
 
 ../benchmarks/ycsb/include/tx_utils.hpp
+filesystem
+-
+fstream
+-
+string
+-
 benchmarks/ycsb/include/config.hpp
 ../benchmarks/ycsb/include/benchmarks/ycsb/include/config.hpp
+protocols/ycsb_common/definitions.hpp
+../benchmarks/ycsb/include/protocols/ycsb_common/definitions.hpp
 utils/utils.hpp
 ../benchmarks/ycsb/include/utils/utils.hpp
 
@@ -174,6 +182,12 @@ utils/logger.hpp
 cstdint
 -
 
+../protocols/serval/include/operation_set.hpp
+vector
+-
+value.hpp
+../protocols/serval/include/value.hpp
+
 ../protocols/serval/include/readwriteset.hpp
 map
 -
@@ -185,20 +199,16 @@ protocols/common/schema.hpp
 ../protocols/serval/include/protocols/common/schema.hpp
 
 ../protocols/serval/include/region.hpp
-unistd.h
--
+protocols/common/readwritelock.hpp
+../protocols/serval/include/protocols/common/readwritelock.hpp
 protocols/serval/include/readwriteset.hpp
 ../protocols/serval/include/protocols/serval/include/readwriteset.hpp
-protocols/serval/include/value.hpp
-../protocols/serval/include/protocols/serval/include/value.hpp
+protocols/ycsb_common/definitions.hpp
+../protocols/serval/include/protocols/ycsb_common/definitions.hpp
+utils/bitmap.hpp
+../protocols/serval/include/utils/bitmap.hpp
 utils/numa.hpp
 ../protocols/serval/include/utils/numa.hpp
-
-../protocols/serval/include/rendezvous_barrier.hpp
-
-../protocols/serval/include/request.hpp
-vector
--
 
 ../protocols/serval/include/serval.hpp
 cassert
@@ -221,6 +231,8 @@ protocols/serval/include/region.hpp
 ../protocols/serval/include/protocols/serval/include/region.hpp
 protocols/serval/include/value.hpp
 ../protocols/serval/include/protocols/serval/include/value.hpp
+utils/bitmap.hpp
+../protocols/serval/include/utils/bitmap.hpp
 utils/logger.hpp
 ../protocols/serval/include/utils/logger.hpp
 utils/utils.hpp
@@ -253,6 +265,8 @@ protocols/silo/include/tidword.hpp
 ../protocols/serval/ycsb/protocols/silo/include/tidword.hpp
 protocols/ycsb_common/record_misc.hpp
 ../protocols/serval/ycsb/protocols/ycsb_common/record_misc.hpp
+utils/numa.hpp
+../protocols/serval/ycsb/utils/numa.hpp
 utils/utils.hpp
 ../protocols/serval/ycsb/utils/utils.hpp
 
@@ -274,6 +288,14 @@ protocols/ycsb_common/record_misc.hpp
 cstdint
 -
 
+../protocols/ycsb_common/definitions.hpp
+
+../protocols/ycsb_common/make_transactions.hpp
+vector
+-
+benchmarks/ycsb/include/config.hpp
+../protocols/ycsb_common/benchmarks/ycsb/include/config.hpp
+
 ../protocols/ycsb_common/record_misc.hpp
 benchmarks/ycsb/include/record_key.hpp
 ../protocols/ycsb_common/benchmarks/ycsb/include/record_key.hpp
@@ -282,9 +304,13 @@ benchmarks/ycsb/include/record_layout.hpp
 protocols/common/schema.hpp
 ../protocols/ycsb_common/protocols/common/schema.hpp
 
+../protocols/ycsb_common/rendezvous_barrier.hpp
+
 ../utils/atomic_wrapper.hpp
 atomic
 -
+
+../utils/bitmap.hpp
 
 ../utils/logger.hpp
 ctime
@@ -306,6 +332,8 @@ stdlib.h
 string.h
 -
 sys/types.h
+-
+unistd.h
 -
 cassert
 -
@@ -353,9 +381,13 @@ utils/random.hpp
 /home/tonyli_15/tpcc-runner/executables/ycsb_serval.cpp
 unistd.h
 -
+bitset
+-
 string
 -
 thread
+-
+vector
 -
 benchmarks/ycsb/include/config.hpp
 /home/tonyli_15/tpcc-runner/executables/benchmarks/ycsb/include/config.hpp
@@ -367,12 +399,10 @@ indexes/masstree.hpp
 /home/tonyli_15/tpcc-runner/executables/indexes/masstree.hpp
 protocols/common/timestamp_manager.hpp
 /home/tonyli_15/tpcc-runner/executables/protocols/common/timestamp_manager.hpp
+protocols/serval/include/operation_set.hpp
+/home/tonyli_15/tpcc-runner/executables/protocols/serval/include/operation_set.hpp
 protocols/serval/include/region.hpp
 /home/tonyli_15/tpcc-runner/executables/protocols/serval/include/region.hpp
-protocols/serval/include/rendezvous_barrier.hpp
-/home/tonyli_15/tpcc-runner/executables/protocols/serval/include/rendezvous_barrier.hpp
-protocols/serval/include/request.hpp
-/home/tonyli_15/tpcc-runner/executables/protocols/serval/include/request.hpp
 protocols/serval/include/serval.hpp
 /home/tonyli_15/tpcc-runner/executables/protocols/serval/include/serval.hpp
 protocols/serval/include/value.hpp
@@ -381,6 +411,12 @@ protocols/serval/ycsb/initializer.hpp
 /home/tonyli_15/tpcc-runner/executables/protocols/serval/ycsb/initializer.hpp
 protocols/serval/ycsb/transaction.hpp
 /home/tonyli_15/tpcc-runner/executables/protocols/serval/ycsb/transaction.hpp
+protocols/ycsb_common/definitions.hpp
+/home/tonyli_15/tpcc-runner/executables/protocols/ycsb_common/definitions.hpp
+protocols/ycsb_common/make_transactions.hpp
+/home/tonyli_15/tpcc-runner/executables/protocols/ycsb_common/make_transactions.hpp
+protocols/ycsb_common/rendezvous_barrier.hpp
+/home/tonyli_15/tpcc-runner/executables/protocols/ycsb_common/rendezvous_barrier.hpp
 utils/logger.hpp
 /home/tonyli_15/tpcc-runner/executables/utils/logger.hpp
 utils/numa.hpp
