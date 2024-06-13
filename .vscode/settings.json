@@ -76,5 +76,6 @@
         "variant": "cpp",
         "codecvt": "cpp",
         "*.ipp": "cpp"
-    }
+    },
+    "C_Cpp.clang_format_style": "{ BreakBeforeBraces: Attach, IndentWidth: 4 }"
 }
