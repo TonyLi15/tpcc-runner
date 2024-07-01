@@ -6,9 +6,12 @@
 #include <stdexcept>
 
 #include "indexes/masstree.hpp"
-#include "protocols/caracal/include/buffer.hpp"
+#include "protocols/caracal/include/major_gc.hpp"
 #include "protocols/caracal/include/readwriteset.hpp"
+#include "protocols/caracal/include/row_buffer.hpp"
 #include "protocols/caracal/include/value.hpp"
+#include "protocols/caracal/include/version.hpp"
+
 // #include "protocols/common/timestamp_manager.hpp"
 #include "protocols/common/transaction_id.hpp"
 #include "protocols/ycsb_common/definitions.hpp" // for delete Record
@@ -21,13 +24,13 @@ template <typename Index> class Caracal {
   public:
     using Key = typename Index::Key;
     using Value = typename Index::Value;
-    using Version = typename Value::Version;
     using LeafNode = typename Index::LeafNode;
     using NodeInfo = typename Index::NodeInfo;
 
     Caracal(uint64_t core_id, uint64_t txid, RowBufferController &rrc,
-            Stat &stat)
-        : core_(core_id), txid_(txid), rrc_(rrc), stat_(stat) {}
+            Stat &stat, MajorGC &gc)
+        : core_(core_id), serial_id_(txid), rrc_(rrc), stat_(stat),
+          major_gc_(gc) {}
 
     ~Caracal() {}
 
@@ -40,6 +43,7 @@ template <typename Index> class Caracal {
     }
 
     void append_pending_version(TableID table_id, Key key, Version *&pending) {
+        assert(0 < epoch_);
         Index &idx = Index::get_index();
 
         tables.insert(table_id);
@@ -87,35 +91,10 @@ template <typename Index> class Caracal {
             return nullptr;
         }
 
-        Version *visible = nullptr;
-
-        // any append is not executed in the row in the current epoch
-        // and read the final state in one previous epoch
-        uint64_t epoch = val->epoch_;
-        if (epoch != epoch_) {
-            visible = val->master_;
-            return execute_read(visible);
-        }
-
-        // append is executed in the current epoch
-        assert(epoch == epoch_);
-        auto [txid_in_global_array, visible_in_global_array] =
-            val->global_array_.search_visible_version(txid_);
-        assert(txid_in_global_array < (int)txid_);
-
-        if (visible_in_global_array) {
-            assert(0 <= txid_in_global_array &&
-                   txid_in_global_array < static_cast<int>(txid_));
-            assert(txid_in_global_array != static_cast<int>(txid_));
-            visible = visible_in_global_array;
-            return wait_stable_and_execute_read(visible);
-        } else {
-            visible = val->master_;
-            return execute_read(visible);
-        }
-
-        assert(false);
-        return nullptr;
+        auto [visible_id, visible] =
+            val->global_array_.search_visible_version(epoch_, serial_id_);
+        assert(visible);
+        return wait_stable_and_execute_read(visible);
     }
 
     Rec *write(TableID table_id, Version *pending) {
@@ -135,45 +114,59 @@ template <typename Index> class Caracal {
         return rec;
     }
 
-    // called in end of the initialization phase
-    // void finalize_batch_append() {
-    //     uint64_t start = rdtscp();
-    //     while (!appended_core_buffers_.empty()) {
-    //         auto itr = appended_core_buffers_.begin();
-    //         Value *val = itr->first;
-    //         PerCoreBuffer *buffer = itr->second;
-    //         // bufferに残っているpendingsをバッチアペンドする
-    //         if (!val->try_lock())
-    //             continue;
-    //         val->global_array_.batch_append(buffer);
-    //         val->unlock();
-    //         appended_core_buffers_.erase(itr);
-    //     }
-    //     stat_.add(Stat::MeasureType::FinalizeInitializationTime,
-    //               rdtscp() - start);
-    // }
+    /*
+      At the end of the initialization phase, each core batch-appends all
+      versions in its own slice of each row buffer to the version arrays of
+      the corresponding rows. A core’s batch-append operations can occur
+      while other cores are still run-ning the initialization phase and
+      possibly allocating new row buffers.
 
-    void finalize_batch_append() {
+       If all cores finish initialization at exactly the same time, they may
+       contend on some rows during batch-append. If this happens, Caracal
+       will delay batch-appending the contending row and process other rows
+       first.
+    */
+    void finalize_batch_append_optimized() {
+        uint64_t start = rdtscp();
+        while (!appended_core_buffers_.empty()) {
+            auto itr = appended_core_buffers_.begin();
+            while (itr != appended_core_buffers_.end()) {
+                Value *val = itr->first;
+                PerCoreBuffer *buffer = itr->second;
+                if (!val->global_array_.try_lock()) {
+                    itr = std::next(itr);
+                    continue;
+                }
+                val->global_array_.batch_append(buffer, epoch_);
+                val->global_array_.unlock();
+                itr = appended_core_buffers_.erase(itr);
+            }
+        }
+        stat_.add(Stat::MeasureType::FinalizeInitializationTime,
+                  rdtscp() - start);
+    }
+
+    void finalize_batch_append_non_optimized() {
         while (!appended_core_buffers_.empty()) {
             auto itr = appended_core_buffers_.begin();
             Value *val = itr->first;
             PerCoreBuffer *buffer = itr->second;
             // bufferに残っているpendingsをバッチアペンドする
             uint64_t start = rdtscp();
-            while (!val->try_lock()) {
+            while (!val->global_array_.try_lock()) {
                 // spin
             }
             stat_.add(Stat::MeasureType::WaitInInitialization,
                       rdtscp() - start);
-            val->global_array_.batch_append(buffer);
-            val->unlock();
+            val->global_array_.batch_append(buffer, epoch_);
+            val->global_array_.unlock();
             appended_core_buffers_.erase(itr);
         }
     }
 
     uint64_t core_;
-    uint64_t txid_;
-    uint64_t epoch_ = 0;
+    uint64_t serial_id_;
+    uint64_t epoch_;
 
   private:
     WriteSet<Key> ws; // write set
@@ -185,18 +178,12 @@ template <typename Index> class Caracal {
 
     Stat &stat_;
 
+    MajorGC &major_gc_;
+
     std::unordered_map<Value *, PerCoreBuffer *> appended_core_buffers_;
 
     void do_append_pending_version(Value *val, Version *&pending) {
         assert(!pending);
-
-        // all threads wait until the first thread to arrive at the val
-        // initialize the val and update the val->epoch_
-        epoch_guard(val, pending);
-        if (pending)
-            return;
-
-        // val->epoch_ == epoch_
         RowBuffer *cur_buffer =
             __atomic_load_n(&val->row_buffer_, __ATOMIC_SEQ_CST);
 
@@ -207,7 +194,7 @@ template <typename Index> class Caracal {
         }
 
         // the val may be uncontended
-        if (val->try_lock()) {
+        if (val->global_array_.try_lock()) {
             pending = append_to_uncontended_row(val);
             return;
         }
@@ -236,67 +223,6 @@ template <typename Index> class Caracal {
         return;
     }
 
-    void epoch_guard(Value *val, Version *&pending) {
-        uint64_t epoch;
-
-        while ((epoch = __atomic_load_n(&val->epoch_, __ATOMIC_SEQ_CST)) <
-               epoch_) {
-            /*
-             case1: val->epoch_ < epoch_
-             */
-            assert(epoch < epoch_);
-
-            if (!val->try_lock())
-                continue;
-
-            assert(val->epoch_ <= epoch_);
-            // 再確認
-            if (val->epoch_ < epoch_) { // 未初期化
-                // the first transaction in the current epoch to arrive on the
-                // val should initialize the val
-                pending = initialize_the_row_and_append(
-                    val); // call unlock inside the function
-            } else if (val->epoch_ == epoch_) { // 　初期化ずみ
-                pending = append_to_uncontended_row(
-                    val); // call unlock inside the function
-            } else {
-                assert(false);
-            }
-
-            return;
-        };
-    }
-
-    void minor_gc_master_version(Version *&master) {
-        assert(master);
-        assert(master->rec);
-        delete reinterpret_cast<Record *>(master->rec);
-        delete master;
-        // MemoryAllocator::deallocate(master->rec);
-        // MemoryAllocator::deallocate(master);
-    }
-
-    Version *initialize_the_row_and_append(Value *val) {
-        minor_gc_master_version(val->master_);
-
-        // 1. store the final state of one previous epoch to val->master_
-        assert(val->epoch_ < epoch_);
-        val->master_ = val->global_array_.find_final_state_and_initialize();
-        assert(val->master_);
-
-        // 3. append to the global_array_
-        Version *pending = create_pending_version();
-        val->global_array_.append(pending, txid_);
-
-        // 4. update val->epoch_
-        val->epoch_ = epoch_;
-        assert(val->global_array_.is_exist(txid_));
-
-        val->unlock();
-
-        return pending;
-    }
-
     bool try_install_new_buffer(Value *val, RowBuffer *cur_buffer,
                                 RowBuffer *new_buffer) {
         assert(cur_buffer == nullptr);
@@ -307,13 +233,13 @@ template <typename Index> class Caracal {
 
     // lock should be acquired before this function is called
     Version *append_to_uncontended_row(Value *val) {
-        Version *pending = create_pending_version();
+        Version *pending = create_pending_version(val->global_array_);
 
         // Append pending version to global version chain
-        val->global_array_.append(pending, txid_);
-        assert(val->global_array_.is_exist(txid_));
+        val->global_array_.append(pending, epoch_, serial_id_);
+        assert(val->global_array_.is_exist(epoch_, serial_id_));
 
-        val->unlock();
+        val->global_array_.unlock();
 
         return pending;
     }
@@ -323,27 +249,28 @@ template <typename Index> class Caracal {
     }
 
     Version *append_to_contented_row(Value *val, PerCoreBuffer *core_buffer) {
-        Version *pending = create_pending_version();
+        Version *pending = create_pending_version(val->global_array_);
 
-        if (core_buffer->appendable(pending, txid_)) {
+        if (core_buffer->appendable(pending, epoch_, serial_id_)) {
             // not full
             appended_core_buffers_.insert({val, core_buffer}); // TODO: 高速化
         } else {
             // per core buffer is full and append to global array
             uint64_t start = rdtscp();
-            while (!val->try_lock()) {
+            while (!val->global_array_.try_lock()) {
                 // spin
             };
             stat_.add(Stat::MeasureType::WaitInInitialization,
                       rdtscp() - start);
-            val->global_array_.batch_append(core_buffer);
-            val->unlock();
+            val->global_array_.batch_append(core_buffer, epoch_);
+            val->global_array_.unlock();
         };
 
         return pending;
     }
 
-    Version *create_pending_version() {
+    Version *
+    create_pending_version([[maybe_unused]] GlobalVersionArray &array) {
         // Version *version = reinterpret_cast<Version *>(
         //     MemoryAllocator::aligned_allocate(sizeof(Version)));
         Version *version = new Version;
@@ -351,6 +278,8 @@ template <typename Index> class Caracal {
         version->rec = nullptr; // TODO
         version->deleted = false;
         version->status = Version::VersionStatus::PENDING;
+
+        // major_gc_.collect(epoch_, version, array);
         return version;
     }
 
@@ -366,7 +295,7 @@ template <typename Index> class Caracal {
                Version::VersionStatus::PENDING) {
             // spin
             asm volatile("pause" : : : "memory"); // equivalent to "rep; nop"
-        }                                         // TODO: やばい
+        } // TODO: やばい
         stat_.add(Stat::MeasureType::WaitInExecution, rdtscp() - start);
         return execute_read(visible);
     }

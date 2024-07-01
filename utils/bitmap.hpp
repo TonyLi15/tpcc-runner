@@ -1,5 +1,7 @@
 #pragma once
 
+int count_bits(uint64_t bits) { return __builtin_popcountll(bits); }
+
 // 1000...0000
 // 注： 符号付きの右シフトは左が符号ビットで埋まる
 // int64_t set_upper_bit___signed() { return UINT64_MAX ^ (UINT64_MAX >>
@@ -77,6 +79,25 @@ int find_the_largest_among_or_less_than(uint64_t bitmap, int pos) {
     if (smallers == 0)
         return -1;
     return find_the_largest(smallers);
+}
+
+// {second largest, first largest}
+std::pair<int, int> find_the_two_largest_among_or_less_than(uint64_t bitmap,
+                                                            int pos) {
+    assert(bitmap != 0);
+    assert(0 <= pos && pos < 64);
+    uint64_t smallers =
+        bitmap & fill_the_left_side_until_the_given_position(pos);
+    if (smallers == 0)
+        return {-1, -1};
+    if (__builtin_popcountll(smallers) == 1) {
+        return {-1, find_the_largest(smallers)};
+    }
+    int largest_pos = find_the_largest(smallers);
+    assert(0 <= largest_pos);
+    return {
+        find_the_largest(set_bit_at_the_given_location(largest_pos) ^ smallers),
+        largest_pos};
 }
 
 int find_the_largest_among_less_than(uint64_t bitmap, int pos) {

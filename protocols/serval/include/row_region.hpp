@@ -32,44 +32,46 @@ class GlobalVersionArray {
         return it != ids_slots_.end();
     }
 
-    std::pair<int, Version *> search_visible_version(int tx_id) {
+    std::tuple<bool, uint64_t, Version *>
+    search_visible_version(int serial_id) {
         // Handle the case where tx_id is smaller than or equal to the smallest
         // tx_id in ids_slots_
-        if (ids_slots_.empty() || tx_id <= ids_slots_.begin()->first) {
-            return {-1, nullptr};
+        if (ids_slots_.empty() || serial_id <= ids_slots_.begin()->first) {
+            return {false, 0, nullptr};
         }
 
         // Find the first element whose tx_id is greater than the given tx_id
         auto it = std::upper_bound(
-            ids_slots_.begin(), ids_slots_.end(), tx_id,
-            [](int tx_id, const auto &pair) { return tx_id <= pair.first; });
+            ids_slots_.begin(), ids_slots_.end(), serial_id,
+            [](int id, const auto &pair) { return id <= pair.first; });
 
         // Move the iterator back to the previous element
         --it;
 
         // Return the tx_id and the corresponding Version* object
-        return {it->first, it->second};
+        return {true, it->first, it->second};
     }
 
-    void append(Version *version, int tx_id) {
+    void append(Version *version, int serial_id) {
         assert(version);
 
         // Find the position to insert the new element
         auto it = std::upper_bound(ids_slots_.begin(), ids_slots_.end(),
-                                   std::make_pair(tx_id, nullptr),
+                                   std::make_pair(serial_id, nullptr),
                                    [](const auto &pair, const auto &value) {
                                        return pair.first < value.first;
                                    });
 
         // Insert the new element at the found position
-        ids_slots_.insert(it, std::make_pair(tx_id, version));
+        ids_slots_.insert(it, std::make_pair(serial_id, version));
     }
 
     void minor_gc() {
-        for (auto &[_, version] : ids_slots_) {
+        for (auto &[id, version] : ids_slots_) {
+            [[maybe_unused]] int id_debug = id;
             assert(version);
-            assert(version->status == Version::VersionStatus::STABLE);
             assert(version->rec);
+            assert(version->status == Version::VersionStatus::STABLE);
             // MemoryAllocator::deallocate(version->rec);
             // MemoryAllocator::deallocate(version);
             delete reinterpret_cast<Record *>(version->rec);
@@ -78,7 +80,12 @@ class GlobalVersionArray {
         }
     }
 
-    std::pair<int, Version *> find_final_state_and_initialize() {
+    void clear_memory() {
+        minor_gc();
+        ids_slots_.clear();
+    }
+
+    std::pair<int, Version *> pop_final_state() {
         if (is_empty()) {
             return {-1, nullptr};
         }
@@ -86,11 +93,10 @@ class GlobalVersionArray {
         auto last = ids_slots_.back(); // 最後尾を取得
         ids_slots_.pop_back();         // 最後尾を削除
 
-        minor_gc();
-        ids_slots_.clear();
-
         return last;
     }
+
+    bool is_dirty() { return !ids_slots_.empty(); }
 
     bool is_empty() { return ids_slots_.empty(); }
 
@@ -110,17 +116,18 @@ class PerCoreVersionArray { // Serval's per-core version array
     void minor_gc() {
         for (Version *&version : slots_) {
             assert(version);
-            assert(version->status == Version::VersionStatus::STABLE);
             assert(version->rec);
+            assert(version->status == Version::VersionStatus::STABLE);
             delete reinterpret_cast<Record *>(version->rec);
             delete version;
             version = nullptr;
         }
     }
 
-    void initialize() {
+    void clear_memory() {
         minor_gc();
-        transaction_bitmap_ = 0;
+        __atomic_store_n(&transaction_bitmap_, 0,
+                         __ATOMIC_SEQ_CST); // TODO: 再考
         slots_.clear();
     }
 
@@ -174,7 +181,7 @@ class PerCoreVersionArray { // Serval's per-core version array
         return slots_[length() - 1];
     }
 
-    std::pair<int, Version *> get_latest() {
+    std::pair<int, Version *> pop_latest() {
         assert(0 < length());
         assert(length() == (int)slots_.size());
 
@@ -193,35 +200,103 @@ class PerCoreVersionArray { // Serval's per-core version array
         int len = length(); // 0 - 64
                             // len:          0 1 2 3 ... 64
                             // append index: 0 1 2 3 ... x
+        [[maybe_unused]] uint64_t debug_len = slots_.size();
         assert(len == (int)slots_.size());
         assert(slots_.size() < 64);
         // slots_[len] = version;
         slots_.insert(slots_.begin() + len, version);
         assert(slots_.size() < 64);
+        assert(debug_len + 1 == slots_.size());
+
+        assert(!is_bit_set_at_the_position(transaction_bitmap_, tx_id));
 
         // update transaction_bitmap_
         update_transaction_bitmap(tx_id);
 
-        assert(length() == (int)slots_.size());
         assert(is_bit_set_at_the_position(transaction_bitmap_, tx_id));
         assert(len + 1 == length());
+        assert(length() == (int)slots_.size());
     }
 };
 
 class RowRegion { // Serval's RowRegion
   public:
+    uint64_t core_bitmap_ = 0;
     PerCoreVersionArray
         *arrays_[LOGICAL_CORE_SIZE]; // TODO: alignas(64) をつけるか検討
 
-    std::pair<int, Version *> find_final_state(uint64_t core) {
-        return arrays_[core]->get_latest();
+    void initialize_core_bitmap() {
+        __atomic_store_n(&core_bitmap_, 0, __ATOMIC_SEQ_CST);
+    };
+
+    std::tuple<bool, uint64_t, uint64_t> identify_visible_version(uint64_t core,
+                                                                  uint64_t tx) {
+        auto [second_core, first_core] =
+            find_the_two_largest_among_or_less_than(core_bitmap_, core);
+
+        if (first_core == -1) {
+            assert(first_core == -1 && second_core == -1);
+            return {false, 0, 0};
+        }
+
+        if (first_core == (int)core) {
+            int first_tx = find_the_largest_among_less_than(
+                arrays_[first_core]->transaction_bitmap_, tx);
+
+            if (first_tx != -1) {
+                return {true, first_core, first_tx};
+            }
+
+            if (second_core != -1) {
+                return {true, second_core,
+                        find_the_largest(
+                            arrays_[second_core]->transaction_bitmap_)};
+            }
+
+            return {false, 0, 0};
+        }
+
+        assert(0 <= first_core && (uint64_t)first_core < core);
+        return {true, first_core,
+                find_the_largest(arrays_[first_core]->transaction_bitmap_)};
     }
 
-    void initialize(uint64_t core) { arrays_[core]->initialize(); }
+    bool is_dirty() {
+        return __atomic_load_n(&core_bitmap_,
+                               __ATOMIC_SEQ_CST) != 0; // TODO: 再考
+    }
+
+    std::pair<int, Version *> pop_final_state() {
+        int core = find_the_largest(core_bitmap_);
+        return arrays_[core]->pop_latest();
+    }
+
+    void clear_memory(uint64_t core) { arrays_[core]->clear_memory(); }
+
+    // for debug
+    bool is_first_write(uint64_t core) {
+        uint64_t core_bitmap = __atomic_load_n(&core_bitmap_, __ATOMIC_SEQ_CST);
+        return !is_bit_set_at_the_position(core_bitmap, core);
+    }
 
     void append(uint64_t core, Version *version, uint64_t tx) {
         assert(version);
         assert(tx < 64);
+        /* Update core bitmap if this is the first append in the current epoch.
+        Otherwise, core_bitmap_ is already updated.
+        */
+        uint64_t core_bitmap = __atomic_load_n(&core_bitmap_, __ATOMIC_SEQ_CST);
+        bool is_first_write = !is_bit_set_at_the_position(core_bitmap, core);
+        if (is_first_write) {
+            clear_memory(core); // clear transaction bitmap
+            __atomic_or_fetch(&core_bitmap_,
+                              set_bit_at_the_given_location(core),
+                              __ATOMIC_SEQ_CST); // core 2: 0010 0000 ... 0000
+            assert(is_bit_set_at_the_position(
+                __atomic_load_n(&core_bitmap_, __ATOMIC_SEQ_CST), core));
+        }
+        assert(is_bit_set_at_the_position(
+            __atomic_load_n(&core_bitmap_, __ATOMIC_SEQ_CST), core));
         arrays_[core]->append(version, tx);
     }
 

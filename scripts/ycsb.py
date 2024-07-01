@@ -27,34 +27,57 @@ x_label = {
 
 protocol_id = {"CARACAL": 0, "SERVAL": 1}
 
-# protocols = ["serval"]
+protocols = ["serval_rc"]
 # protocols = ["caracal"]
-protocols = ["caracal", "serval"]
-CMAKE_BUILD_TYPE = "Release"
+# protocols = ["caracal", "serval"]
+CMAKE_BUILD_TYPE = "Debug"
+
+
+def add_options_to_protocol(protocol, bcbu, rc):
+    options = [protocol]
+    if bcbu:
+        options.append("BCBU")
+    if rc:
+        options.append("RC")
+    return "_".join(options)
 
 def gen_setups():
     payloads = [4]
-    buffer_slots = [4] # for caracal
-    txs_in_epochs = [4096] # (1000epoch) (500epoch) (100epoch) respectively
-    batch_core_bitmap_updates = [0] # 0 is good
 
+    # =========== for caracal ===========
+    buffer_slots = [255]
+    # ===================================
+
+    # =========== for serval ===========
+    bcbus = [0] # batch_core_bitmap_updates: 0 is good
+    rcs = [0] # reference counter (read counter)
+    # ===================================
+
+    # =========== common ===========
+    txs_in_epochs = [4096] # (1000epoch) (500epoch) (100epoch) respectively
+    # ===================================
+
+    # =========== workload parameters ===========
     # workloads = ["X"] # Write Only
-    workloads = ["A"]  # 50:50
+    workloads = ["A"] # 50:50
     # workloads = ["B"] # 5:95
     # workloads = ["Y"] # 60:40
-    records = [10000000] # ここは変更しないでください！（未対応）
-    threads = [64] # ここは変更しないでください！（未対応）
+
     # skews = [0.7, 0.8, 0.85, 0.9, 0.95, 0.99] # 0.0 - 0.99
-    skews = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999] # 0.0 - 0.99, skip = 0.01
+    skews = [0.99] # 0.0 - 0.99
+    # skews = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999] # 0.0 - 0.99, skip = 0.01
     # skews = [0.85, 0.86, 0.87, 0.88, 0.89, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99] # high contention, 0.85 - 0.99, skip = 0.01
 
     repss = [10] # ここは変更しないでください！（未対応）
+    records = [10000000] # ここは変更しないでください！（未対応）
+    threads = [64] # ここは変更しないでください！（未対応）
+    # ============================================
 
     return [
         [
-            [protocol, str(payload), str(buffer_slot), str(txs_in_epoch), str(batch_core_bitmap_update)],
+            [protocol, str(payload), str(buffer_slot), str(txs_in_epoch), str(bcbu), str(rc)],
             [
-                protocol + "_BCBU" if batch_core_bitmap_update else protocol,
+                add_options_to_protocol(protocol, bcbu, rc),
                 workload,
                 str(record),
                 str(thread),
@@ -66,7 +89,8 @@ def gen_setups():
         for payload in payloads
         for buffer_slot in buffer_slots
         for txs_in_epoch in txs_in_epochs
-        for batch_core_bitmap_update in batch_core_bitmap_updates
+        for bcbu in bcbus
+        for rc in rcs
         for workload in workloads
         for record in records
         for thread in threads
@@ -82,8 +106,8 @@ def build():
     if not os.path.exists("./log"):
         os.mkdir("./log")  # compile logs
     for setup in gen_setups():
-        [[protocol, payload, buffer_slot, txs_in_epoch, batch_core_bitmap_update], _] = setup
-        print("Compiling " + " PAYLOAD_SIZE=" + payload + " MAX_SLOTS_OF_PER_CORE_BUFFER=" + buffer_slot + " NUM_TXS_IN_ONE_EPOCH=" + txs_in_epoch + " BATCH_CORE_BITMAP_UPDATE=" + batch_core_bitmap_update)
+        [[protocol, payload, buffer_slot, txs_in_epoch, bcbu, rc], _] = setup
+        print("Compiling " + " PAYLOAD_SIZE=" + payload + " MAX_SLOTS_OF_PER_CORE_BUFFER=" + buffer_slot + " NUM_TXS_IN_ONE_EPOCH=" + txs_in_epoch + " BCBU=" + bcbu, " RC=" + rc)
         logfile = "_PAYLOAD_SIZE" + payload + "_MAX_SLOTS_OF_PER_CORE_BUFFER" + buffer_slot + ".compile_log"
         os.system(
             "cmake .. -DLOG_LEVEL=0 -DCMAKE_BUILD_TYPE="
@@ -96,8 +120,10 @@ def build():
             + buffer_slot
             + " -DNUM_TXS_IN_ONE_EPOCH="
             + txs_in_epoch
-            + " -DBATCH_CORE_BITMAP_UPDATE="
-            + batch_core_bitmap_update
+            + " -DBCBU="
+            + bcbu
+            + " -DRC="
+            + rc
             + " > ./log/"
             + "compile_"
             + logfile
@@ -117,10 +143,10 @@ def run_all():
         os.mkdir("./res/tmp")
     for setup in gen_setups():
         [
-            [protocol, payload, buffer_slot, txs_in_epoch, batch_core_bitmap_update],
+            [protocol, payload, buffer_slot, txs_in_epoch, bcbu, rc],
             args,
         ] = setup
-        title = "ycsb" + payload + "_" + buffer_slot + "_" + txs_in_epoch + "_" + batch_core_bitmap_update + "_" + protocol
+        title = "ycsb" + payload + "_" + buffer_slot + "_" + txs_in_epoch + "_" + bcbu + "_" + rc + "_" + protocol
 
         print("[{}: {}]".format(title, " ".join([str(NUM_SECONDS), *args])))
 
@@ -189,7 +215,6 @@ def plot_all():
     # my_plot.plot_all_param_per_core("serval_BCBU", dfs["serval_BCBU"])
     my_plot.plot_all_param_per_core("caracal", dfs["caracal"])
     my_plot.plot_all_param_per_core("serval", dfs["serval"])
-    # my_plot.plot_cache_hit_rate(grouped_dfs)
 
     # my_plot.plot_cache_hit_rate(grouped_dfs)
     # my_plot.plot_all_param("caracal", grouped_dfs["caracal"])

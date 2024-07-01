@@ -9,12 +9,12 @@
 #include "benchmarks/ycsb/include/tx_runner.hpp"
 #include "benchmarks/ycsb/include/tx_utils.hpp"
 #include "indexes/masstree.hpp"
-#include "protocols/serval/include/operation_set.hpp"
-#include "protocols/serval/include/row_region.hpp"
-#include "protocols/serval/include/serval.hpp"
-#include "protocols/serval/include/value.hpp"
-#include "protocols/serval/ycsb/initializer.hpp"
-#include "protocols/serval/ycsb/transaction.hpp"
+#include "protocols/serval_rc/include/operation_set.hpp"
+#include "protocols/serval_rc/include/row_region.hpp"
+#include "protocols/serval_rc/include/serval.hpp"
+#include "protocols/serval_rc/include/value.hpp"
+#include "protocols/serval_rc/ycsb/initializer.hpp"
+#include "protocols/serval_rc/ycsb/transaction.hpp"
 #include "protocols/ycsb_common/definitions.hpp"
 #include "protocols/ycsb_common/rendezvous_barrier.hpp"
 #include "utils/logger.hpp"
@@ -27,29 +27,9 @@ volatile mrcu_epoch_type active_epoch = 1;
 volatile std::uint64_t globalepoch = 1;
 volatile bool recovering = false;
 
-// template <typename Protocol>
-// void do_pre_initialization_phase(uint64_t worker_id, uint64_t
-// head_in_the_epoch,
-//                                  Protocol &serval,
-//                                  std::vector<OperationSet> &txs) {
-//     for (uint64_t i = 0; i < NUM_TXS_IN_ONE_EPOCH_IN_ONE_CORE; i++) {
-//         serval.serial_id_ = (i * 64) + worker_id; // round-robin assignment
-//         std::vector<Operation *> &rw_set =
-//             txs[head_in_the_epoch + (i * 64) + worker_id]
-//                 .rw_set_; // round-robin assignment
-//         for (size_t j = 0; j < rw_set.size(); j++) {
-//             if (rw_set[j]->ope_ == Operation::Ope::Read) {
-//                 serval.increment_refernce_counter(get_id<Record>(),
-//                                                   rw_set[j]->index_);
-//             }
-//         }
-//         serval.terminate_transaction();
-//     }
-// }
-
 template <typename Protocol>
-void do_initialization_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
-                             Protocol &serval, std::vector<OperationSet> &txs) {
+void do_write_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
+                    Protocol &serval, std::vector<OperationSet> &txs) {
     serval.core_ = worker_id; // sequential assignment
     for (uint64_t i = 0; i < NUM_TXS_IN_ONE_EPOCH_IN_ONE_CORE; i++) {
         // ============ sequential assignment ============
@@ -59,8 +39,30 @@ void do_initialization_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
                 .w_set_; // sequential assignment
         // ============ sequential assignment ============
         for (size_t j = 0; j < w_set.size(); j++) {
-            serval.append_pending_version(get_id<Record>(), w_set[j]->index_,
-                                          w_set[j]->pending_);
+            serval.update_write_bitmaps(get_id<Record>(), w_set[j]->index_,
+                                        w_set[j]->w_bitmap_);
+        }
+        serval.terminate_transaction();
+    }
+}
+
+template <typename Protocol>
+void do_read_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
+                   Protocol &serval, std::vector<OperationSet> &txs) {
+    serval.core_ = worker_id; // sequential assignment
+    for (uint64_t i = 0; i < NUM_TXS_IN_ONE_EPOCH_IN_ONE_CORE; i++) {
+        // ============ sequential assignment ============
+        serval.serial_id_ = (worker_id * 64) + i; // sequential assignment
+        std::vector<Operation *> &rw_set =
+            txs[head_in_the_epoch + (worker_id * 64) + i]
+                .rw_set_; // sequential assignment
+        // ============ sequential assignment ============
+        for (size_t j = 0; j < rw_set.size(); j++) {
+            if (rw_set[j]->ope_ == Operation::Ope::Read) {
+                serval.append_pending_version(
+                    get_id<Record>(), rw_set[j]->index_, rw_set[j]->pending_,
+                    rw_set[j]->w_bitmap_);
+            }
         }
         serval.terminate_transaction();
     }
@@ -80,11 +82,10 @@ void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
         // ============ round-robin assignment ============
         for (size_t j = 0; j < rw_set.size(); j++) {
             if (rw_set[j]->ope_ == Operation::Ope::Read) {
-                serval.read(get_id<Record>(), rw_set[j]->index_);
+                serval.read(get_id<Record>(), rw_set[j]->index_,
+                            rw_set[j]->pending_, rw_set[j]->w_bitmap_);
             } else if (rw_set[j]->ope_ == Operation::Ope::Update) {
-                if (rw_set[j]->pending_) { // TODO: txθ: w(1)...w(1)
-                    serval.write(get_id<Record>(), rw_set[j]->pending_);
-                }
+                serval.write(get_id<Record>(), rw_set[j]->w_bitmap_);
             }
         }
     }
@@ -103,7 +104,7 @@ void rendezvous_barrier_to_start(RendezvousBarrierVariable::BarrierType type,
 
 template <typename Protocol>
 void run_tx(RendezvousBarrier &rend, [[maybe_unused]] ThreadLocalData &t_data,
-            uint32_t worker_id, RowRegionController &rrc,
+            uint32_t worker_id,
             [[maybe_unused]] std::vector<OperationSet> &txs) {
     uint64_t init_total = 0, exec_total = 0;
     uint64_t init_start, init_end, exec_start, exec_end;
@@ -116,7 +117,7 @@ void run_tx(RendezvousBarrier &rend, [[maybe_unused]] ThreadLocalData &t_data,
     t_data.stat.record(Stat::MeasureType::Core, numa.cpu_);
     t_data.stat.record(Stat::MeasureType::Node, numa.node_);
 
-    Protocol serval(numa.cpu_, worker_id, rrc, t_data.stat);
+    Protocol serval(numa.cpu_, worker_id, t_data.stat);
 
     // Perf perf(worker_id, tid);
     // Perf::Output perf_start, perf_end;
@@ -133,18 +134,13 @@ void run_tx(RendezvousBarrier &rend, [[maybe_unused]] ThreadLocalData &t_data,
         [[maybe_unused]] uint64_t head_in_the_epoch =
             (epoch - 1) * NUM_TXS_IN_ONE_EPOCH;
 
-        // /*
-        // pre-initialization phase
-        // */
-        // do_pre_initialization_phase(worker_id, head_in_the_epoch, serval,
-        // txs);
+        do_write_phase(worker_id, head_in_the_epoch, serval, txs);
 
-        // rendezvous_barrier_to_start(
-        //     RendezvousBarrierVariable::BarrierType::InitPhase, rend,
-        //     worker_id);
+        rendezvous_barrier_to_start(
+            RendezvousBarrierVariable::BarrierType::InitPhase, rend, worker_id);
         init_start = rdtscp();
 
-        do_initialization_phase(worker_id, head_in_the_epoch, serval, txs);
+        do_read_phase(worker_id, head_in_the_epoch, serval, txs);
 #if BCBU
         serval.batch_core_bitmap_update();
 #endif
@@ -299,7 +295,6 @@ int main(int argc, const char *argv[]) {
 
     std::vector<ThreadLocalData> t_data(num_threads);
 
-    RowRegionController rrc;
     RendezvousBarrier rend(num_threads - 1);
 
     std::vector<OperationSet> txs(NUM_ALL_TXS);
@@ -309,14 +304,13 @@ int main(int argc, const char *argv[]) {
 
     for (int i = 0; i < num_threads; i++) {
         threads.emplace_back(run_tx<Protocol>, std::ref(rend),
-                             std::ref(t_data[i]), i, std::ref(rrc),
-                             std::ref(txs));
+                             std::ref(t_data[i]), i, std::ref(txs));
     }
     for (int i = 0; i < num_threads; i++) {
         threads[i].join();
     }
 
-    print_database(txs);
+    // print_database(txs);
 
     Stat stat;
     std::string filepath = stat.prepare_result_file();

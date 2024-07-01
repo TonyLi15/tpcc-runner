@@ -99,22 +99,11 @@ template <typename Index> class Serval {
 
         assert(epoch == epoch_);
 
-        assert(assert_global_array_and_region(val));
+        assert(val->row_region_->is_dirty() ^ val->has_dirty_region());
 
         if (val->global_array_.is_dirty()) {
-            auto [is_found, txid, v] =
-                val->global_array_.search_visible_version(serial_id_);
-
-            if (is_found) {
-                assert((uint64_t)txid < serial_id_);
-                visible = v;
-                return wait_stable_and_execute_read(visible);
-            } else {
-                // visible version not found in global array
-                visible = val->master_;
-                return execute_read(visible);
-            }
-
+            visible = search_visible_in_global_array(val);
+            return execute_read(visible);
         } else if (val->has_dirty_region()) {
             auto [is_found, core, tx] =
                 val->row_region_->identify_visible_version(
@@ -133,6 +122,13 @@ template <typename Index> class Serval {
 
         assert(false);
         return nullptr;
+    }
+
+    Version *search_visible_in_global_array(Value *val) {
+        auto [txid, visible] =
+            val->global_array_.search_visible_version(serial_id_);
+        assert((uint64_t)txid < serial_id_);
+        return visible ? visible : val->master_;
     }
 
     Rec *write(TableID table_id, Version *pending) {
@@ -194,21 +190,19 @@ template <typename Index> class Serval {
         /*
         val->epoch_ == epoch_
         */
+        RowRegion *cur_region =
+            __atomic_load_n(&val->row_region_, __ATOMIC_SEQ_CST);
+
+        // the val will or may be contented if the row_region_ is already exist.
+        if (may_be_contented(cur_region)) {
+            pending = append_to_contented_row(cur_region);
+            return;
+        }
 
         // the val is may be uncontented
         if (val->try_lock()) {
             // Successfully got the try lock
-
-            // the val will or may be contented if the row_region_ is already
-            // exist.
-            RowRegion *cur_region =
-                __atomic_load_n(&val->row_region_, __ATOMIC_SEQ_CST);
-            if (may_be_contented(cur_region)) {
-                pending = append_to_contented_row(cur_region);
-            } else {
-                pending = append_to_unconted_row(val);
-            }
-
+            pending = append_to_unconted_row(val);
             val->unlock();
             return;
         }
@@ -282,24 +276,16 @@ template <typename Index> class Serval {
         val->master_ = latest;
     }
 
-    bool assert_global_array_and_region(Value *val) {
-        if (val->global_array_.is_dirty()) {
-            return !val->has_dirty_region();
-        } else {
-            return val->has_dirty_region();
-        }
-        return false;
-    }
-
     void initialize_the_row(Value *val) {
         [[maybe_unused]] uint64_t epoch = val->epoch_;
         [[maybe_unused]] uint64_t core = core_;
 
-        assert(assert_global_array_and_region(val)); // TODO: 再考
+        assert(val->global_array_.is_dirty() ^
+               val->has_dirty_region()); // TODO: 再考
 
         // 1. store the final state of one previous epoch to val->master_
         if (val->global_array_.is_dirty()) {
-            assert(!val->has_dirty_region());
+            assert(!(val->has_dirty_region()));
             auto [id, latest] = val->global_array_.pop_final_state();
             assert(latest);
             val->global_array_.clear_memory();
@@ -310,8 +296,6 @@ template <typename Index> class Serval {
             assert(latest);
             val->row_region_->initialize_core_bitmap(); // initialize
             gc_master_version(val, latest);
-        } else {
-            assert(false);
         }
 
         // 2. update val->epoch_

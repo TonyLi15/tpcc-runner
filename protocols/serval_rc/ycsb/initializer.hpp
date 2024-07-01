@@ -3,7 +3,6 @@
 #include "benchmarks/ycsb/include/config.hpp"
 #include "benchmarks/ycsb/include/record_key.hpp"
 #include "benchmarks/ycsb/include/record_layout.hpp"
-#include "protocols/caracal/include/version.hpp"
 #include "protocols/common/memory_allocator.hpp"
 #include "protocols/common/schema.hpp"
 #include "protocols/silo/include/tidword.hpp"
@@ -15,13 +14,15 @@ template <typename Index> class Initializer {
   private:
     using Key = typename Index::Key;
     using Value = typename Index::Value;
+    using Version = typename Value::Version;
 
     static void insert_into_index(TableID table_id, Key key, void *rec) {
         Value *val = new Value;
+
         Version *version = new Version;
         version->rec = rec;
         version->status = Version::VersionStatus::STABLE;
-        val->global_array_.append(version, 0, 0);
+        val->w_bitmap_.master_ = version;
 
         Index::get_index().insert(table_id, key, val);
     }

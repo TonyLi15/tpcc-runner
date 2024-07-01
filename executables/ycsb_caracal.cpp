@@ -9,9 +9,10 @@
 #include "benchmarks/ycsb/include/tx_runner.hpp"
 #include "benchmarks/ycsb/include/tx_utils.hpp"
 #include "indexes/masstree.hpp"
-#include "protocols/caracal/include/buffer.hpp"
 #include "protocols/caracal/include/caracal.hpp"
+#include "protocols/caracal/include/major_gc.hpp"
 #include "protocols/caracal/include/operation_set.hpp"
+#include "protocols/caracal/include/row_buffer.hpp"
 #include "protocols/caracal/include/value.hpp"
 #include "protocols/caracal/ycsb/initializer.hpp"
 #include "protocols/caracal/ycsb/transaction.hpp"
@@ -34,7 +35,7 @@ void do_initialization_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
                              Protocol &caracal,
                              std::vector<OperationSet> &txs) {
     for (uint64_t i = 0; i < NUM_TXS_IN_ONE_EPOCH_IN_ONE_CORE; i++) {
-        caracal.txid_ = (i * 64) + worker_id; // round-robin assignment
+        caracal.serial_id_ = (i * 64) + worker_id; // round-robin assignment
         std::vector<Operation *> &w_set_ =
             txs[head_in_the_epoch + (i * 64) + worker_id]
                 .w_set_; // round-robin assignment
@@ -51,8 +52,8 @@ void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
                         Protocol &caracal, std::vector<OperationSet> &txs) {
     for (uint64_t i = 0; i < NUM_TXS_IN_ONE_EPOCH_IN_ONE_CORE; i++) {
         assert(i < txs.size());
-        caracal.txid_ = (i * 64) + worker_id; // round-robin assignment
-        uint64_t global_txid = head_in_the_epoch + caracal.txid_;
+        caracal.serial_id_ = (i * 64) + worker_id; // round-robin assignment
+        uint64_t global_txid = head_in_the_epoch + caracal.serial_id_;
         std::vector<Operation *> &rw_set = txs[global_txid].rw_set_;
         for (size_t j = 0; j < rw_set.size(); j++) {
             if (rw_set[j]->ope_ == Operation::Ope::Read) {
@@ -66,7 +67,7 @@ void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
     }
 }
 
-void rendezvous_barrier_to_start(RendezvousBarrier::BarrierType type,
+void rendezvous_barrier_to_start(RendezvousBarrierVariable::BarrierType type,
                                  RendezvousBarrier &rend, uint32_t worker_id) {
     if (worker_id == 63) {
         // do parent work
@@ -97,10 +98,11 @@ void run_tx(RendezvousBarrier &rend, [[maybe_unused]] ThreadLocalData &t_data,
     // Perf perf(worker_id, tid);
     // Perf::Output perf_start, perf_end;
 
-    Protocol caracal(numa.cpu_, worker_id, rrc, t_data.stat);
+    MajorGC gc;
+    Protocol caracal(numa.cpu_, worker_id, rrc, t_data.stat, gc);
 
-    rendezvous_barrier_to_start(RendezvousBarrier::BarrierType::StartExp, rend,
-                                worker_id);
+    rendezvous_barrier_to_start(RendezvousBarrierVariable::BarrierType::Exp,
+                                rend, worker_id);
     // uint64_t exp_start = worker_id == 0 ? rdtscp() : 0;
     uint64_t exp_start = rdtscp();
 
@@ -114,32 +116,23 @@ void run_tx(RendezvousBarrier &rend, [[maybe_unused]] ThreadLocalData &t_data,
 
         init_start = rdtscp();
         do_initialization_phase(worker_id, head_in_the_epoch, caracal, txs);
-        /*
-           At the end of the initialization phase, each core batch-appends all
-           versions in its own slice of each row buffer to the version arrays of
-           the corresponding rows. A core’s batch-append operations can occur
-           while other cores are still run-ning the initialization phase and
-           possibly allocating new row buffers.
 
-           If all cores finish initialization at exactly the same time, they may
-           contend on some rows during batch-append. If this happens, Caracal
-           will delay batch-appending the contending row and process other rows
-           first.
-        */
-        caracal.finalize_batch_append();
+        caracal.finalize_batch_append_optimized();
         init_end = rdtscp();
         init_total = init_total + (init_end - init_start);
 
         rendezvous_barrier_to_start(
-            RendezvousBarrier::BarrierType::StartExecPhase, rend, worker_id);
+            RendezvousBarrierVariable::BarrierType::ExecPhase, rend, worker_id);
 
         exec_start = rdtscp();
         do_execution_phase(worker_id, head_in_the_epoch, caracal, txs);
         exec_end = rdtscp();
         exec_total = exec_total + (exec_end - exec_start);
 
+        // gc.major_gc(epoch);
+
         rendezvous_barrier_to_start(
-            RendezvousBarrier::BarrierType::StartNewEpoc, rend, worker_id);
+            RendezvousBarrierVariable::BarrierType::NewEpoc, rend, worker_id);
         epoch++; // new epoch start
     }
     // uint64_t exp_end = worker_id == 0 ? rdtscp() : 0;
@@ -156,32 +149,25 @@ void run_tx(RendezvousBarrier &rend, [[maybe_unused]] ThreadLocalData &t_data,
     //                    perf_end.member_ - perf_start.member_);
 }
 
-// void print_database() {
-//     using Index = MasstreeIndexes<Value<Version>>;
-//     [[maybe_unused]] Config &c = get_mutable_config();
-//     for (uint64_t key = 0; key < c.get_num_records(); key++) {
-//         Index &idx = Index::get_index();
-//         Value<Version> *val;
-//         typename Index::Result res = idx.find(
-//             get_id<Record>(), key, val); // find corresponding index in
-//             masstree
-//         if (res == Index::Result::NOT_FOUND)
-//             return;
-//         if (val->global_array_.initialized) {
-//             for (size_t i = 0; i < val->global_array_.ids_slots_.size(); i++)
-//             {
-//                 assert(0 <= val->global_array_.ids_slots_[i].first);
-//                 assert(val->global_array_.ids_slots_[i].second->status ==
-//                        Version::VersionStatus::STABLE);
-//             }
-//         } else {
-//             assert(val->global_array_.ids_slots_.size() == 1);
-//         }
+void print_database() {
+    using Index = MasstreeIndexes<Value>;
+    [[maybe_unused]] Config &c = get_mutable_config();
+    for (uint64_t key = 0; key < c.get_num_records(); key++) {
+        Index &idx = Index::get_index();
+        Value *val;
+        typename Index::Result res = idx.find(
+            get_id<Record>(), key, val); // find corresponding index in masstree
+        if (res == Index::Result::NOT_FOUND)
+            return;
 
-//         // std::cout << key << ": ";
-//         // val->global_array_.print();
-//     }
-// }
+        std::cout << key << ": ";
+        for (auto [id, version] : val->global_array_.ids_slots_) {
+            assert(version->status == Version::VersionStatus::STABLE);
+            std::cout << id << ", ";
+        }
+        std::cout << std::endl;
+    }
+}
 
 void print_transactions(std::vector<OperationSet> &txs) {
     for (uint64_t i = 0; i < txs.size(); i++) {
@@ -224,7 +210,7 @@ int main(int argc, const char *argv[]) {
     printf("Loading all tables with %lu record(s) each with %u bytes\n",
            num_records, PAYLOAD_SIZE);
 
-    using Index = MasstreeIndexes<Value<Version>>;
+    using Index = MasstreeIndexes<Value>;
     using Protocol = Caracal<Index>;
 
     Initializer<Index>::load_all_tables<Record>(); // make database
