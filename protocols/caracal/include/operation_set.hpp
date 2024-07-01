@@ -1,9 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <vector>
 
 #include "benchmarks/ycsb/include/config.hpp"
-#include "value.hpp"
+#include "protocols/caracal/include/value.hpp"
 
 class Operation {
   public:
@@ -41,8 +42,16 @@ class OperationSet {
 
         for (uint64_t j = 0; j < 3; j++) {
             int operationType = urand_int(1, 100);
-            int three_of_ten_key =
+            uint64_t three_of_ten_key =
                 zipf_int(c.get_contention(), c.get_num_records());
+            while (rw_set_.end() !=
+                   std::find_if(rw_set_.begin(), rw_set_.end(),
+                                [three_of_ten_key](const auto &ope) {
+                                    return ope->index_ == three_of_ten_key;
+                                })) {
+                three_of_ten_key =
+                    zipf_int(c.get_contention(), c.get_num_records());
+            }
             Operation *ope;
             if (operationType <= c.get_read_propotion()) {
                 // ope = new (MemoryAllocator::allocate(sizeof(Operation)))
@@ -59,8 +68,16 @@ class OperationSet {
 
         for (uint64_t j = 0; j < 7; j++) {
             int operationType = urand_int(1, 100);
-            int seven_of_ten_key = contented_keys
+            uint64_t seven_of_ten_key = contented_keys
                 [zipf_int(c.get_contention(), c.get_num_records()) % 77];
+            while (rw_set_.end() !=
+                   std::find_if(rw_set_.begin(), rw_set_.end(),
+                                [seven_of_ten_key](const auto &ope) {
+                                    return ope->index_ == seven_of_ten_key;
+                                })) {
+                seven_of_ten_key = contented_keys
+                    [zipf_int(c.get_contention(), c.get_num_records()) % 77];
+            }
             // contented_keys[urand_int(0, 76)]; // TODO: change
             Operation *ope;
             if (operationType <= c.get_read_propotion()) {

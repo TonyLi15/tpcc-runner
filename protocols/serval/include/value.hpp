@@ -7,8 +7,7 @@
 #include "protocols/serval/include/row_region.hpp"
 #include "utils/atomic_wrapper.hpp"
 
-template <typename Version_> struct Value {
-    using Version = Version_;
+struct Value {
     alignas(64) RWLock rwl;
     uint64_t epoch_ = 0;
 

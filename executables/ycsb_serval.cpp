@@ -186,11 +186,11 @@ bool has_write(OperationSet &tx, uint64_t key) {
 }
 
 void print_database([[maybe_unused]] std::vector<OperationSet> &txs) {
-    using Index = MasstreeIndexes<Value<Version>>;
+    using Index = MasstreeIndexes<Value>;
     [[maybe_unused]] Config &c = get_mutable_config();
     for (uint64_t key = 0; key < c.get_num_records(); key++) {
         Index &idx = Index::get_index();
-        Value<Version> *val;
+        Value *val;
         typename Index::Result res = idx.find(get_id<Record>(), key, val);
 
         if (res == Index::Result::NOT_FOUND)
@@ -288,7 +288,7 @@ int main(int argc, const char *argv[]) {
     printf("Loading all tables with %lu record(s) each with %u bytes\n",
            num_records, PAYLOAD_SIZE);
 
-    using Index = MasstreeIndexes<Value<Version>>;
+    using Index = MasstreeIndexes<Value>;
     using Protocol = Serval<Index>;
 
     Initializer<Index>::load_all_tables<Record>();

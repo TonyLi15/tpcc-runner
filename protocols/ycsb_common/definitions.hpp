@@ -18,7 +18,7 @@ using Record = Payload<PAYLOAD_SIZE>;
 // total number of transactions executed in the exeperiment
 
 // change NUM_EPOCH for experiments
-#define NUM_EPOCH 500
+#define NUM_EPOCH 1000
 
 #define CLOCKS_PER_US 2100
 #define CLOCKS_PER_MS (CLOCKS_PER_US * 1000)

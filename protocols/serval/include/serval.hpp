@@ -21,7 +21,6 @@ template <typename Index> class Serval {
   public:
     using Key = typename Index::Key;
     using Value = typename Index::Value;
-    using Version = typename Value::Version;
     using LeafNode = typename Index::LeafNode;
     using NodeInfo = typename Index::NodeInfo;
 

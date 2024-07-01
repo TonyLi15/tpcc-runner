@@ -301,9 +301,7 @@ int main(int argc, const char *argv[]) {
     RendezvousBarrier rend(num_threads - 1);
 
     std::vector<OperationSet> txs(NUM_ALL_TXS);
-    for (size_t i = 0; i < txs[0].rw_set_.size(); i++) {
-        std::cout << txs[0].rw_set_[i]->index_ << std::endl;
-    }
+    std::cout << "start..." << std::endl;
 
     for (int i = 0; i < num_threads; i++) {
         threads.emplace_back(run_tx<Protocol>, std::ref(rend),

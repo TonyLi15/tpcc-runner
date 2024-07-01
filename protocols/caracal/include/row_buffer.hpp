@@ -21,7 +21,7 @@ static uint64_t convert_to_global_id(uint64_t epoch, uint64_t serial_id) {
 }
 
 // TODO: 効率化
-static uint64_t get_serial_id(uint64_t global_id) {
+[[maybe_unused]] static uint64_t get_serial_id(uint64_t global_id) {
     return global_id & ~fill_the_left_side_until_before_the_given_position(32);
 }
 
@@ -155,7 +155,7 @@ class GlobalVersionArray {
     }
 
     void gc(typename std::vector<std::pair<uint64_t, Version *>>::iterator itr,
-            uint64_t epoch) {
+            [[maybe_unused]] uint64_t epoch) {
         auto [id, version] = *itr;
         assert(id < epoch);
         assert(version);

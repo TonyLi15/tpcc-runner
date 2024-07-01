@@ -4,8 +4,8 @@ import matplotlib.ticker as ptick  ##これが必要！
 
 class Plot:
     markersize = 15
-    marker = {"caracal": "^", "serval": "x", "serval_BCBU": "+"}
-    color = {"caracal": "red", "serval": "blue", "serval_BCBU": "green"}
+    marker = {"caracal": "^", "serval": "x", "serval_rc": "+"}
+    color = {"caracal": "red", "serval": "blue", "serval_rc": "green"}
     ylabel = {
       "Core": "Core",
       "Node": "Node",
