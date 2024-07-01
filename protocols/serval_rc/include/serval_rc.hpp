@@ -20,7 +20,6 @@ template <typename Index> class Serval {
   public:
     using Key = typename Index::Key;
     using Value = typename Index::Value;
-    using Version = typename Value::Version;
     using LeafNode = typename Index::LeafNode;
     using NodeInfo = typename Index::NodeInfo;
 
@@ -107,17 +106,18 @@ template <typename Index> class Serval {
         // TODO: Case of found in read or written set
     }
 
-    const Rec *read(TableID table_id, Key key, Version *pending,
-                    WriteBitmap *w_bitmap) {
-        wait_stable_and_execute_read(pending);
+    const Rec *read([[maybe_unused]] TableID table_id, [[maybe_unused]] Key key,
+                    Version *pending, WriteBitmap *w_bitmap) {
+        Rec *rec = wait_stable_and_execute_read(pending);
         w_bitmap->decrement_ref_cnt();
+        return rec;
     }
 
     Rec *write(TableID table_id, WriteBitmap *w_bitmap) {
         return upsert(table_id, w_bitmap);
     }
 
-    Rec *upsert(TableID table_id, WriteBitmap *w_bitmap) {
+    Rec *upsert(TableID table_id, [[maybe_unused]] WriteBitmap *w_bitmap) {
         const Schema &sch = Schema::get_schema();
         size_t record_size = sch.get_record_size(table_id);
 
@@ -125,7 +125,7 @@ template <typename Index> class Serval {
         Rec *rec = reinterpret_cast<Rec *>(operator new(record_size));
 
         Version *pending =
-            identify_write_version(core_, get_tx_serial(serial_id_));
+            w_bitmap->identify_write_version(core_, get_tx_serial(serial_id_));
         if (pending) {
             __atomic_store_n(&pending->rec, rec, __ATOMIC_SEQ_CST); // write
             __atomic_store_n(&pending->status, Version::VersionStatus::STABLE,

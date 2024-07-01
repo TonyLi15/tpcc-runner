@@ -14,7 +14,6 @@ template <typename Index> class Initializer {
   private:
     using Key = typename Index::Key;
     using Value = typename Index::Value;
-    using Version = typename Value::Version;
 
     static void insert_into_index(TableID table_id, Key key, void *rec,
                                   void *rec2) {

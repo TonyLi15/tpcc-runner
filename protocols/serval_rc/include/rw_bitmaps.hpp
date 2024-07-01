@@ -90,7 +90,7 @@ class WriteBitmap {
     void gc_master() {
         assert(master_);
         assert(master_->status == Version::VersionStatus::STABLE);
-        delete master_->rec;
+        delete reinterpret_cast<Record *>(master_->rec);
         delete master_;
     }
 
@@ -119,7 +119,7 @@ class WriteBitmap {
     }
 
     void update_tx_bitmap(int pos, uint64_t tx) {
-        assert(pos < tx_bitmaps_.size());
+        assert(pos < (int)tx_bitmaps_.size());
         tx_bitmaps_[pos] = set_bit_at_the_given_location(tx_bitmaps_[pos], tx);
     }
     void insert_tx_bitmap(int insert_pos, uint64_t tx) {
@@ -154,7 +154,7 @@ class WriteBitmap {
         }
 
         int first_core_pos = count_prefix_sum(first_core);
-        assert(first_core_pos < tx_bitmaps_.size());
+        assert(first_core_pos < (int)tx_bitmaps_.size());
 
         if (first_core == (int)core) {
             int first_tx = find_the_largest_among_less_than(
@@ -165,7 +165,7 @@ class WriteBitmap {
             }
 
             if (second_core != -1) {
-                int second_core_pos = count_prefix_sum(first_core);
+                int second_core_pos = count_prefix_sum(second_core);
                 assert(second_core_pos < first_core_pos);
                 return {true, second_core,
                         find_the_largest(tx_bitmaps_[second_core_pos])};
@@ -181,29 +181,34 @@ class WriteBitmap {
 
     // read phase
     Version *do_append_pending_version(uint64_t core, uint64_t tx) {
-        auto [is_found, first_core, first_tx] =
-            identify_visible_version_in_placeholders(core, tx);
+        if (core_bitmap_) {
+            auto [is_found, first_core, first_tx] =
+                identify_visible_version_in_placeholders(core, tx);
 
-        if (is_found) {
-            uint64_t serial_id = get_serial_id(core, tx);
-            auto itr = std::find_if(placeholders_.begin(), placeholders_.end(),
-                                    [serial_id](const auto &pair) {
-                                        return pair.first == serial_id;
-                                    });
-            if (itr == placeholders_.end()) {
-                // Find the position to insert the new element
-                itr = std::upper_bound(
-                    placeholders_.begin(), placeholders_.end(),
-                    std::make_pair(serial_id, nullptr),
-                    [](const auto &pair, const auto &new_pair) {
-                        return pair.first < new_pair.first;
-                    });
-                // Insert the new element at the found position
-                itr = placeholders_.insert(
-                    itr, std::make_pair(serial_id, create_pending_version()));
+            if (is_found) {
+                uint64_t serial_id = get_serial_id(core, tx);
+                auto itr =
+                    std::find_if(placeholders_.begin(), placeholders_.end(),
+                                 [serial_id](const auto &pair) {
+                                     return pair.first == serial_id;
+                                 });
+                if (itr == placeholders_.end()) {
+                    // Find the position to insert the new element
+                    itr = std::upper_bound(
+                        placeholders_.begin(), placeholders_.end(),
+                        std::make_pair(serial_id, nullptr),
+                        [](const auto &pair, const auto &new_pair) {
+                            return pair.first < new_pair.first;
+                        });
+                    // Insert the new element at the found position
+                    itr = placeholders_.insert(
+                        itr,
+                        std::make_pair(serial_id, create_pending_version()));
+                }
+                return itr->second;
             }
-            return itr->second;
         }
+
         return master_;
     }
 

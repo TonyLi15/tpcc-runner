@@ -90,14 +90,16 @@ std::pair<int, int> find_the_two_largest_among_or_less_than(uint64_t bitmap,
         bitmap & fill_the_left_side_until_the_given_position(pos);
     if (smallers == 0)
         return {-1, -1};
-    if (__builtin_popcountll(smallers) == 1) {
-        return {-1, find_the_largest(smallers)};
-    }
     int largest_pos = find_the_largest(smallers);
+    assert(largest_pos < 64);
+    if (__builtin_popcountll(smallers) == 1) {
+        return {-1, largest_pos};
+    }
     assert(0 <= largest_pos);
-    return {
-        find_the_largest(set_bit_at_the_given_location(largest_pos) ^ smallers),
-        largest_pos};
+    int second_largest_pos = find_the_largest(
+        ~set_bit_at_the_given_location(largest_pos) & smallers);
+    assert(second_largest_pos < largest_pos);
+    return {second_largest_pos, largest_pos};
 }
 
 int find_the_largest_among_less_than(uint64_t bitmap, int pos) {

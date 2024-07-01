@@ -10,8 +10,7 @@
 #include "benchmarks/ycsb/include/tx_utils.hpp"
 #include "indexes/masstree.hpp"
 #include "protocols/serval_rc/include/operation_set.hpp"
-#include "protocols/serval_rc/include/row_region.hpp"
-#include "protocols/serval_rc/include/serval.hpp"
+#include "protocols/serval_rc/include/serval_rc.hpp"
 #include "protocols/serval_rc/include/value.hpp"
 #include "protocols/serval_rc/ycsb/initializer.hpp"
 #include "protocols/serval_rc/ycsb/transaction.hpp"
@@ -181,77 +180,81 @@ bool has_write(OperationSet &tx, uint64_t key) {
     return false;
 }
 
-void print_database([[maybe_unused]] std::vector<OperationSet> &txs) {
-    using Index = MasstreeIndexes<Value<Version>>;
-    [[maybe_unused]] Config &c = get_mutable_config();
-    for (uint64_t key = 0; key < c.get_num_records(); key++) {
-        Index &idx = Index::get_index();
-        Value<Version> *val;
-        typename Index::Result res = idx.find(get_id<Record>(), key, val);
+// void print_database([[maybe_unused]] std::vector<OperationSet> &txs) {
+//     using Index = MasstreeIndexes<Value>;
+//     [[maybe_unused]] Config &c = get_mutable_config();
+//     for (uint64_t key = 0; key < c.get_num_records(); key++) {
+//         Index &idx = Index::get_index();
+//         Value *val;
+//         typename Index::Result res = idx.find(get_id<Record>(), key, val);
 
-        if (res == Index::Result::NOT_FOUND)
-            return;
+//         if (res == Index::Result::NOT_FOUND)
+//             return;
 
-        if (0 < val->epoch_) {
-            [[maybe_unused]] uint64_t head_in_the_epoch =
-                (val->epoch_ - 1) * NUM_TXS_IN_ONE_EPOCH;
-            std::cout << "global_array: ";
-            for (auto [id, version] : val->global_array_.ids_slots_) {
-                assert(0 <= id);
-                assert(version->status == Version::VersionStatus::STABLE);
-                assert(has_write(txs[head_in_the_epoch + id], key));
-                std::cout << id << " ";
-            }
-            std::cout << std::endl;
-            std::cout << "region: ";
-            if (val->has_dirty_region()) {
-                for (size_t core = 0; core < 64; core++) {
-                    if (is_bit_set_at_the_position(
-                            val->row_region_->core_bitmap_, core)) {
-                        PerCoreVersionArray *array =
-                            val->row_region_->arrays_[core];
-                        assert(array->length() == (int)array->slots_.size());
-                        uint64_t tx_bitmap = array->transaction_bitmap_;
-                        uint64_t txid = 0;
-                        for (size_t i = 0; i < array->slots_.size(); i++) {
-                            assert(array->slots_[i]->status ==
-                                   Version::VersionStatus::STABLE);
-                            while ((tx_bitmap &
-                                    set_bit_at_the_given_location(txid)) == 0) {
-                                txid++;
-                            }
-                            tx_bitmap = tx_bitmap &
-                                        ~set_bit_at_the_given_location(txid);
-                            uint64_t serial_id = core * 64 + txid;
-                            std::cout << serial_id << " ";
+//         if (0 < val->epoch_) {
+//             [[maybe_unused]] uint64_t head_in_the_epoch =
+//                 (val->epoch_ - 1) * NUM_TXS_IN_ONE_EPOCH;
+//             std::cout << "global_array: ";
+//             for (auto [id, version] : val->global_array_.ids_slots_) {
+//                 assert(0 <= id);
+//                 assert(version->status == Version::VersionStatus::STABLE);
+//                 assert(has_write(txs[head_in_the_epoch + id], key));
+//                 std::cout << id << " ";
+//             }
+//             std::cout << std::endl;
+//             std::cout << "region: ";
+//             if (val->has_dirty_region()) {
+//                 for (size_t core = 0; core < 64; core++) {
+//                     if (is_bit_set_at_the_position(
+//                             val->row_region_->core_bitmap_, core)) {
+//                         PerCoreVersionArray *array =
+//                             val->row_region_->arrays_[core];
+//                         assert(array->length() == (int)array->slots_.size());
+//                         uint64_t tx_bitmap = array->transaction_bitmap_;
+//                         uint64_t txid = 0;
+//                         for (size_t i = 0; i < array->slots_.size(); i++) {
+//                             assert(array->slots_[i]->status ==
+//                                    Version::VersionStatus::STABLE);
+//                             while ((tx_bitmap &
+//                                     set_bit_at_the_given_location(txid)) ==
+//                                     0) {
+//                                 txid++;
+//                             }
+//                             tx_bitmap = tx_bitmap &
+//                                         ~set_bit_at_the_given_location(txid);
+//                             uint64_t serial_id = core * 64 + txid;
+//                             std::cout << serial_id << " ";
 
-                            if (!has_write(txs[head_in_the_epoch + serial_id],
-                                           key)) {
-                                std::cout
-                                    << "<<<<<<<<<" << "head_in_the_epoch: "
-                                    << head_in_the_epoch
-                                    << ", serial_id: " << serial_id
-                                    << ", core: " << core << ", txid: " << txid;
-                                if (has_write(txs[serial_id], key)) {
-                                    std::cout << ", true ";
-                                }
-                                std::cout << ">>>>>>>>" << std::endl;
-                            }
-                            // assert(
-                            //     has_write(txs[head_in_the_epoch + serial_id],
-                            //     key));
-                        }
-                    }
-                }
-                std::cout << std::endl;
-            }
-            std::cout << std::endl;
-        }
+//                             if (!has_write(txs[head_in_the_epoch +
+//                             serial_id],
+//                                            key)) {
+//                                 std::cout
+//                                     << "<<<<<<<<<" << "head_in_the_epoch: "
+//                                     << head_in_the_epoch
+//                                     << ", serial_id: " << serial_id
+//                                     << ", core: " << core << ", txid: " <<
+//                                     txid;
+//                                 if (has_write(txs[serial_id], key)) {
+//                                     std::cout << ", true ";
+//                                 }
+//                                 std::cout << ">>>>>>>>" << std::endl;
+//                             }
+//                             // assert(
+//                             //     has_write(txs[head_in_the_epoch +
+//                             serial_id],
+//                             //     key));
+//                         }
+//                     }
+//                 }
+//                 std::cout << std::endl;
+//             }
+//             std::cout << std::endl;
+//         }
 
-        // std::cout << key << ": ";
-        // val->global_array_.print();
-    }
-}
+//         // std::cout << key << ": ";
+//         // val->global_array_.print();
+//     }
+// }
 
 int main(int argc, const char *argv[]) {
     if (argc != 9) {
@@ -284,7 +287,7 @@ int main(int argc, const char *argv[]) {
     printf("Loading all tables with %lu record(s) each with %u bytes\n",
            num_records, PAYLOAD_SIZE);
 
-    using Index = MasstreeIndexes<Value<Version>>;
+    using Index = MasstreeIndexes<Value>;
     using Protocol = Serval<Index>;
 
     Initializer<Index>::load_all_tables<Record>();
