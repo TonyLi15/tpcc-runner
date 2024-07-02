@@ -24,7 +24,7 @@ using Record = Payload<PAYLOAD_SIZE>;
 #define CLOCKS_PER_MS (CLOCKS_PER_US * 1000)
 #define CLOCKS_PER_S (CLOCKS_PER_MS * 1000)
 
-#define NUM_REGIONS 1000 // Caracal's definition is 256, use 10000 here
+#define NUM_REGIONS 10000 // Caracal's definition is 256, use 10000 here
 // #define NUM_REGIONS 1000 // Caracal's definition is 256, use 10000 here
 
 #define MAX_SLOTS_OF_PER_CORE_ARRAY 64 // for Serval

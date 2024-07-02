@@ -13,7 +13,7 @@ import module.setting as setting
 
 # EXECUTE THIS SCRIPT IN BASE DIRECTORY!!!
 
-NUM_EXPERIMENTS_PER_SETUP = 1  # used in plot
+NUM_EXPERIMENTS_PER_SETUP = 5  # used in plot
 NUM_SECONDS = 1  # used in plot
 VARYING_TYPE = "contention"  # used in plot
 
@@ -25,7 +25,6 @@ x_label = {
     "NUM_TXS_IN_ONE_EPOCH": "NUM_TXS_IN_ONE_EPOCH"
 }
 
-protocol_id = {"CARACAL": 0, "SERVAL": 1}
 
 # protocols = ["serval_rc"]
 # protocols = ["caracal"]
@@ -64,8 +63,8 @@ def gen_setups():
     # workloads = ["Y"] # 60:40
 
     # skews = [0.7, 0.8, 0.85, 0.9, 0.95, 0.99] # 0.0 - 0.99
-    skews = [0.0, 0.7] # 0.0 - 0.99
-    # skews = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99, 0.999] # 0.0 - 0.99, skip = 0.01
+    # skews = [0.0, 0.7] # 0.0 - 0.99
+    skews = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99] # 0.0 - 0.99, skip = 0.01
     # skews = [0.85, 0.86, 0.87, 0.88, 0.89, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99] # high contention, 0.85 - 0.99, skip = 0.01
 
     repss = [10] # ここは変更しないでください！（未対応）

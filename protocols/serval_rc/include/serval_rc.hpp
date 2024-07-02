@@ -120,13 +120,11 @@ template <typename Index> class Serval {
     Rec *upsert(TableID table_id, [[maybe_unused]] WriteBitmap *w_bitmap) {
         const Schema &sch = Schema::get_schema();
         size_t record_size = sch.get_record_size(table_id);
-
-        // Rec *rec = MemoryAllocator::aligned_allocate(record_size);
-        Rec *rec = reinterpret_cast<Rec *>(operator new(record_size));
-
+        Rec *rec = nullptr;
         Version *pending =
             w_bitmap->identify_write_version(core_, get_tx_serial(serial_id_));
         if (pending) {
+            rec = reinterpret_cast<Rec *>(operator new(record_size));
             __atomic_store_n(&pending->rec, rec, __ATOMIC_SEQ_CST); // write
             __atomic_store_n(&pending->status, Version::VersionStatus::STABLE,
                              __ATOMIC_SEQ_CST);

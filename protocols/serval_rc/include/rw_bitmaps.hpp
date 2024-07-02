@@ -44,35 +44,31 @@ class WriteBitmap {
 
     // execute read
     void decrement_ref_cnt() {
-        uint64_t ref_cnt = __atomic_sub_fetch(&ref_cnt_, 1, __ATOMIC_SEQ_CST);
-        if (ref_cnt == 0) {
-            lock_.lock();
+        lock_.lock();
+        ref_cnt_--;
+        if (ref_cnt_ == 0) {
             gc_and_update_master();
-            lock_.unlock();
         }
+        lock_.unlock();
     }
 
     // execute write
     Version *identify_write_version(uint64_t core, uint64_t tx) {
         Version *write_v = nullptr;
-        if (__atomic_load_n(&ref_cnt_, __ATOMIC_SEQ_CST)) {
+        lock_.lock();
+        if (ref_cnt_) {
             uint64_t serial_id = get_serial_id(core, tx);
 
-            lock_.lock();
             // search placeholders.
             // if my_txid is in placeholders, execute write.
             auto itr = std::find_if(placeholders_.begin(), placeholders_.end(),
                                     [serial_id](const auto &pair) {
                                         return pair.first == serial_id;
                                     });
-            if (itr == placeholders_.end()) {
-                write_v = nullptr;
-            } else {
-                write_v = itr->second;
+            if (itr != placeholders_.end()) {
+                write_v = itr->second; // visible version
             }
-            lock_.unlock();
         } else {
-            lock_.lock();
             assert(placeholders_.empty());
             // if my_txid is final state, update master
             if (is_final_state(core, tx)) {
@@ -80,8 +76,8 @@ class WriteBitmap {
                 master_ = create_pending_version();
                 write_v = master_;
             }
-            lock_.unlock();
         }
+        lock_.unlock();
 
         return write_v;
     }
@@ -186,24 +182,25 @@ class WriteBitmap {
                 identify_visible_version_in_placeholders(core, tx);
 
             if (is_found) {
-                uint64_t serial_id = get_serial_id(core, tx);
+                uint64_t visible_id = get_serial_id(first_core, first_tx);
                 auto itr =
                     std::find_if(placeholders_.begin(), placeholders_.end(),
-                                 [serial_id](const auto &pair) {
-                                     return pair.first == serial_id;
+                                 [visible_id](const auto &pair) {
+                                     return pair.first == visible_id;
                                  });
+                // placeholders_の中にまだvisible_idは存在しなかった
                 if (itr == placeholders_.end()) {
                     // Find the position to insert the new element
                     itr = std::upper_bound(
                         placeholders_.begin(), placeholders_.end(),
-                        std::make_pair(serial_id, nullptr),
+                        std::make_pair(visible_id, nullptr),
                         [](const auto &pair, const auto &new_pair) {
                             return pair.first < new_pair.first;
                         });
                     // Insert the new element at the found position
                     itr = placeholders_.insert(
                         itr,
-                        std::make_pair(serial_id, create_pending_version()));
+                        std::make_pair(visible_id, create_pending_version()));
                 }
                 return itr->second;
             }
