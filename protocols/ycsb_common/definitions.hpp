@@ -1,10 +1,15 @@
 #pragma once
 
+// The epoch and core constants below are benchmark-neutral; the record
+// alias is not. TPC-C has several record types and defines TPCC_BENCH to
+// skip it, leaving YCSB behaviour untouched.
+#ifndef TPCC_BENCH
 #ifdef PAYLOAD_SIZE
 using Record = Payload<PAYLOAD_SIZE>;
 #else
 #define PAYLOAD_SIZE 1024
 using Record = Payload<PAYLOAD_SIZE>;
+#endif
 #endif
 
 #ifndef NUM_CORE

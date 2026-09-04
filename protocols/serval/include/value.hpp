@@ -36,7 +36,7 @@ struct Value {
     void gc_master_version(Version *latest, Stat &stat) {
         assert(master_);
         assert(master_->rec);
-        delete reinterpret_cast<Record *>(master_->rec);
+        operator delete(master_->rec);
         delete master_;
         stat.increment(Stat::MeasureType::Delete);
         master_ = latest;

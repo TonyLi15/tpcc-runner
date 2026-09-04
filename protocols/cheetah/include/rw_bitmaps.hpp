@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <vector>
 
-#include "benchmarks/ycsb/include/config.hpp"
 #include "protocols/cheetah/include/version.hpp"
 #include "protocols/common/readwritelock.hpp"
 #include "protocols/ycsb_common/definitions.hpp"
@@ -227,7 +226,9 @@ class WriteBitmap {
   void gc(Version *&version, Stat &stat) {
     assert(version);
     assert(version->status == Version::VersionStatus::STABLE);
-    delete reinterpret_cast<Record *>(version->rec);
+    // Freed without naming a record type: TPC-C has several, and every
+    // record here is trivially destructible and allocated with operator new.
+    operator delete(version->rec);
     delete version;
     stat.increment(Stat::MeasureType::Delete);
     version = nullptr;

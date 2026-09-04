@@ -193,7 +193,7 @@ class GlobalVersionArray {
         assert(version);
         assert(version->status == Version::VersionStatus::STABLE);
         assert(version->rec);
-        delete reinterpret_cast<Record *>(version->rec);
+        operator delete(version->rec);
         delete version;
         stat.increment(Stat::MeasureType::Delete);
     }

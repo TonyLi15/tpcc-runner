@@ -85,7 +85,7 @@ class GlobalVersionArray {
             assert(version->rec);
             assert(version->status == Version::VersionStatus::STABLE);
 
-            delete reinterpret_cast<Record *>(version->rec);
+            operator delete(version->rec);
             delete version;
             stat.increment(Stat::MeasureType::Delete);
             version = nullptr;
@@ -130,7 +130,7 @@ class PerCoreVersionArray { // Serval's per-core version array
             assert(version);
             assert(version->rec);
             assert(version->status == Version::VersionStatus::STABLE);
-            delete reinterpret_cast<Record *>(version->rec);
+            operator delete(version->rec);
             delete version;
             stat.increment(Stat::MeasureType::Delete);
             version = nullptr;
