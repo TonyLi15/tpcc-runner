@@ -12,7 +12,7 @@
 
 class Operation {
  public:
-  enum Ope { Read, Update };
+  enum Ope { Read, Update, ReadModifyWrite };
   Ope ope_;
   uint64_t index_;
   uint64_t value_ = 0;
@@ -35,6 +35,22 @@ class OperationSet {
  public:
   std::vector<Operation *> rw_set_;
   std::vector<Operation *> w_set_;
+
+  // YCSB-F: a read-modify-write operation reads the row and then writes it,
+  // so it belongs to both rw_set_ and w_set_.
+  Operation *make_operation(const Config &c, int operationType, uint64_t key) {
+    if (operationType <= c.get_read_propotion()) {
+      return new Operation(Operation::Ope::Read, key);
+    }
+    Operation *ope;
+    if (operationType <= c.get_read_propotion() + c.get_update_propotion()) {
+      ope = new Operation(Operation::Ope::Update, key);
+    } else {
+      ope = new Operation(Operation::Ope::ReadModifyWrite, key);
+    }
+    w_set_.emplace_back(ope);
+    return ope;
+  }
 
   // OperationSet() {
   //   const Config &c = get_config();
@@ -84,13 +100,7 @@ class OperationSet {
               three_of_ten_key =
                   zipf_int(c.get_contention(), c.get_num_records());
           }
-          Operation *ope;
-          if (operationType <= c.get_read_propotion()) {
-              ope = new Operation(Operation::Ope::Read, three_of_ten_key);
-          } else {
-              ope = new Operation(Operation::Ope::Update, three_of_ten_key);
-              w_set_.emplace_back(ope);
-          }
+          Operation *ope = make_operation(c, operationType, three_of_ten_key);
           rw_set_.emplace_back(ope);
       }
 
@@ -107,13 +117,7 @@ class OperationSet {
                   [zipf_int(c.get_contention(), c.get_num_records()) % NUM_HOT_KEYS];
           }
           // contented_keys[urand_int(0, 76)]; // TODO: change
-          Operation *ope;
-          if (operationType <= c.get_read_propotion()) {
-              ope = new Operation(Operation::Ope::Read, seven_of_ten_key);
-          } else {
-              ope = new Operation(Operation::Ope::Update, seven_of_ten_key);
-              w_set_.emplace_back(ope);
-          }
+          Operation *ope = make_operation(c, operationType, seven_of_ten_key);
           rw_set_.emplace_back(ope);
       }
   }

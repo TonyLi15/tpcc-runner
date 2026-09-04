@@ -113,11 +113,13 @@ struct Stat {
             std::to_string(c.get_contention()),
             std::to_string(c.get_reps_per_txn()),
             std::to_string(c.get_read_propotion()),
-            std::to_string(c.get_update_propotion())};
+            std::to_string(c.get_update_propotion()),
+            std::to_string(c.get_readmodifywrite_propotion())};
   }
   std::vector<std::string> runtime_params_name = {
-      "protocol",     "num_records",    "num_threads",     "contention",
-      "reps_per_txn", "read_propotion", "update_propotion"};
+      "protocol",       "num_records",      "num_threads",
+      "contention",     "reps_per_txn",     "read_propotion",
+      "update_propotion", "readmodifywrite_propotion"};
 
   std::string create_result_file_path() {
     std::filesystem::create_directory("res");

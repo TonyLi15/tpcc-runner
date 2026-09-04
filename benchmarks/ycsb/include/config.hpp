@@ -45,6 +45,9 @@ class Config {
         } else if (workload_type == "F") {
             // Read-modify-write
             w.set_workload(50, 0, 50);
+        } else if (workload_type == "F100") { // original not ycsb
+            // read-modify-write only (NWR applicability floor)
+            w.set_workload(0, 0, 100);
         } else if (workload_type == "X") { // original not ycsb
             // write only
             w.set_workload(0, 100, 0);

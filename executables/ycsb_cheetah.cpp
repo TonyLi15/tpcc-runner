@@ -65,7 +65,8 @@ void do_read_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
             .rw_set_;  // sequential assignment
     // ============ sequential assignment ============
     for (size_t j = 0; j < rw_set.size(); j++) {
-      if (rw_set[j]->ope_ == Operation::Ope::Read) {
+      if (rw_set[j]->ope_ == Operation::Ope::Read ||
+          rw_set[j]->ope_ == Operation::Ope::ReadModifyWrite) {
         serval.append_pending_version(get_id<Record>(), rw_set[j]->index_,
                                       rw_set[j]->pending_,
                                       rw_set[j]->w_bitmap_);
@@ -95,6 +96,14 @@ void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
         serval.read(get_id<Record>(), rw_set[j]->index_, rw_set[j]->pending_,
                     rw_set[j]->w_bitmap_);
       } else if (rw_set[j]->ope_ == Operation::Ope::Update) {
+        serval.write(get_id<Record>(), rw_set[j]->w_bitmap_);
+      } else if (rw_set[j]->ope_ == Operation::Ope::ReadModifyWrite) {
+        // The read must precede the write. FindVisible resolves strictly
+        // below this transaction's serial id, so the read observes the
+        // pre-image rather than this transaction's own write.
+        assert(rw_set[j]->pending_);
+        serval.read(get_id<Record>(), rw_set[j]->index_, rw_set[j]->pending_,
+                    rw_set[j]->w_bitmap_);
         serval.write(get_id<Record>(), rw_set[j]->w_bitmap_);
       }
     }

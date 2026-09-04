@@ -87,6 +87,14 @@ void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
         if (rw_set[j]->pending_) {  // TODO: txθ: w(1)...w(1)
           serval.write(get_id<Record>(), rw_set[j]->pending_);
         }
+      } else if (rw_set[j]->ope_ == Operation::Ope::ReadModifyWrite) {
+        // The read must precede the write. search_visible_version resolves
+        // strictly below this transaction's serial id, so the read observes
+        // the pre-image rather than this transaction's own write.
+        serval.read(get_id<Record>(), rw_set[j]->index_);
+        if (rw_set[j]->pending_) {
+          serval.write(get_id<Record>(), rw_set[j]->pending_);
+        }
       }
     }
   }

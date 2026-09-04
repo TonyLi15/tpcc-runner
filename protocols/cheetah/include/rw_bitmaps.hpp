@@ -65,6 +65,10 @@ class WriteBitmap {
 
       if (is_found) {  // read the version created in this epoch
         uint64_t visible_id = get_serial_id(visible_core, visible_tx);
+        // A transaction never observes its own write: the bitmap search
+        // resolves strictly below (core, tx). This is what makes a
+        // read-modify-write operation read the pre-image.
+        assert(visible_id != get_serial_id(core, tx));
 
         // ***************** should be atomic *****************
         lock_.lock();
