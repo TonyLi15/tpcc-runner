@@ -6,6 +6,11 @@
 #include "utils/atomic_wrapper.hpp"
 #include "utils/logger.hpp"
 
+#ifdef LOCK_STAT
+#include "utils/lock_stat.hpp"
+#include "utils/tsc.hpp"
+#endif
+
 class RWLock {
  public:
   RWLock() : cnt(0) {}
@@ -25,21 +30,43 @@ class RWLock {
   void lock_upgrade() {
     // assume that slock is taken before exclusive lock
     int64_t expected;
+#ifdef LOCK_STAT
+    bool busy = false;
+#endif
     while (true) {
       expected = load_acquire(cnt);
       if (expected == 1 && compare_exchange(cnt, expected, -1)) {
+#ifdef LOCK_STAT
+        ++tl_lock_acquire;
+        if (busy) ++tl_lock_contend;
+        tl_lock_hold_start = LOCK_STAT_TSC();
+#endif
         return;
       }
+#ifdef LOCK_STAT
+      busy = true;
+#endif
     }
   }
 
   void lock() {
     int64_t expected;
+#ifdef LOCK_STAT
+    bool busy = false;
+#endif
     while (true) {
       expected = load_acquire(cnt);
       if (expected == 0 && compare_exchange(cnt, expected, -1)) {
+#ifdef LOCK_STAT
+        ++tl_lock_acquire;
+        if (busy) ++tl_lock_contend;
+        tl_lock_hold_start = LOCK_STAT_TSC();
+#endif
         return;
       }
+#ifdef LOCK_STAT
+      busy = true;
+#endif
     }
   }
 
@@ -57,8 +84,15 @@ class RWLock {
     // assume that slock is taken before lock upgrade
     int64_t expected = load_acquire(cnt);
     if (expected == 1 && compare_exchange(cnt, expected, -1)) {
+#ifdef LOCK_STAT
+      ++tl_lock_acquire;
+      tl_lock_hold_start = LOCK_STAT_TSC();
+#endif
       return true;
     } else {
+#ifdef LOCK_STAT
+      ++tl_lock_contend;
+#endif
       return false;
     }
   }
@@ -66,15 +100,29 @@ class RWLock {
   bool try_lock() {
     int64_t expected = load_acquire(cnt);
     if (expected == 0 && compare_exchange(cnt, expected, -1)) {
+#ifdef LOCK_STAT
+      ++tl_lock_acquire;
+      tl_lock_hold_start = LOCK_STAT_TSC();
+#endif
       return true;
     } else {
+#ifdef LOCK_STAT
+      ++tl_lock_contend;
+#endif
       return false;
     }
   }
 
   void unlock_shared() { fetch_add(cnt, -1); }
 
-  void unlock() { fetch_add(cnt, 1); }
+  void unlock() {
+#ifdef LOCK_STAT
+    tl_lock_hold += LOCK_STAT_TSC() - tl_lock_hold_start;
+#endif
+    fetch_add(cnt, 1);
+  }
+
+  int64_t get_cnt() {return load_acquire(cnt);}
 
  private:
   int64_t cnt = 0;

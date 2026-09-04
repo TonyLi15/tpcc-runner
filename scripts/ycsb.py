@@ -13,22 +13,24 @@ import module.setting as setting
 
 # EXECUTE THIS SCRIPT IN BASE DIRECTORY!!!
 
-NUM_EXPERIMENTS_PER_SETUP = 5  # used in plot
-NUM_SECONDS = 1  # used in plot
+NUM_EXPERIMENTS_PER_SETUP = 1  # used in plot
+NUM_SECONDS = 10  # match archive run (build_cluster_write_only)
 VARYING_TYPE = "contention"  # used in plot
 
 x_label = {
     "num_threads": "#thread",
     "reps": "#operations",
-    "contention": "Skew",
-    "MAX_SLOTS_OF_PER_CORE_BUFFER": "MAX_SLOTS_OF_PER_CORE_BUFFER",
+    "contention": "skew",
+    "MAX_SLOTS_OF_PER_CORE_BUFFER": "#slots of buffer",
     "NUM_TXS_IN_ONE_EPOCH": "NUM_TXS_IN_ONE_EPOCH"
 }
 
 
-# protocols = ["serval_rc"]
+
 # protocols = ["caracal"]
-protocols = ["caracal", "serval", "serval_rc"]
+# protocols = ["cheetah"]
+# protocols = ["serval"]
+protocols = ["cheetah", "caracal"]
 CMAKE_BUILD_TYPE = "Release"
 
 
@@ -44,7 +46,8 @@ def gen_setups():
     payloads = [4]
 
     # =========== for caracal ===========
-    buffer_slots = [255]
+    buffer_slots = [255] # 255
+    # buffer_slots = [255] # 255
     # ===================================
 
     # =========== for serval ===========
@@ -57,14 +60,15 @@ def gen_setups():
     # ===================================
 
     # =========== workload parameters ===========
-    # workloads = ["X"] # Write Only
-    workloads = ["A"] # 50:50
-    # workloads = ["B"] # 5:95
-    # workloads = ["Y"] # 60:40
+    workloads = ["X"] # 0:100 Write Only
+    # workloads = ["A"] # 50:50 // Update heavy
+    # workloads = ["C"] # 100:0 // Read Only
+    # workloads = ["B"] # 95:5 // Read heavy
 
+    # skews = [0.8, 0.9, 0.99] # 0.0 - 0.99
     # skews = [0.7, 0.8, 0.85, 0.9, 0.95, 0.99] # 0.0 - 0.99
-    # skews = [0.0, 0.7] # 0.0 - 0.99
-    skews = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99] # 0.0 - 0.99, skip = 0.01
+    # Match archive_build/build_cluster_write_only: full skew sweep
+    skews = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99]
     # skews = [0.85, 0.86, 0.87, 0.88, 0.89, 0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99] # high contention, 0.85 - 0.99, skip = 0.01
 
     repss = [10] # ここは変更しないでください！（未対応）
@@ -166,8 +170,12 @@ def run_all():
                 print("Error. Stopping")
                 exit(0)
     ret = os.system(
-        "cat ./res/*.csv > ./res/result.csv; cat ./res/header > ./res/concat.csv; cat ./res/result.csv >> ./res/concat.csv"
+        "bash -c 'for f in ./res/*.csv; do [ \"$f\" = ./res/result.csv ] && continue; [ \"$f\" = ./res/concat.csv ] && continue; cat \"$f\"; done > ./res/result.csv.tmp && mv ./res/result.csv.tmp ./res/result.csv'"
     )
+    if ret == 0:
+        ret = os.system(
+            "cat ./res/header > ./res/concat.csv; cat ./res/result.csv >> ./res/concat.csv"
+        )
     if ret != 0:
         print("Error. Stopping")
         exit(0)
@@ -192,16 +200,17 @@ def plot_all():
         protocol_df = df[df["protocol"] == protocol]
         protocol_grouped_df = protocol_df.groupby(compile_param + runtime_param, as_index=False).sum()
         for column in protocol_grouped_df.columns:
-            if column in ["TotalTime","InitializationTime","FinalizeInitializationTime","ExecutionTime","WaitInInitialization","WaitInExecution","PerfLeader","PerfMember"]:
-                protocol_grouped_df[column] = protocol_grouped_df[column] / 64 / NUM_EXPERIMENTS_PER_SETUP
+            if column in ["Create","Delete","TotalTime","InitializationTime","ExecutionTime","Sync1Time","Sync2Time","WaitInInitialization","WaitInExecution","WaitInGC","PerfLeader","PerfMember"]:
+                protocol_grouped_df[column] = pd.to_numeric(protocol_grouped_df[column], errors="coerce") / 64 / NUM_EXPERIMENTS_PER_SETUP
         grouped_dfs[protocol] = protocol_grouped_df
         dfs[protocol] = protocol_df
+
 
     if not os.path.exists("./plots"):
         os.mkdir("./plots")  # create plot directory inside res
     os.chdir("./plots")
     
-    plot_params = ["TotalTime", "InitializationTime", "FinalizeInitializationTime", "ExecutionTime","WaitInInitialization","WaitInExecution","PerfLeader","PerfMember"]
+    plot_params = ["Create","Delete","TotalTime","InitializationTime","ExecutionTime","Sync1Time","Sync2Time","WaitInInitialization","WaitInExecution","WaitInGC","PerfLeader","PerfMember"]
     my_plot = plot.Plot(
         VARYING_TYPE,
         x_label,
@@ -210,10 +219,14 @@ def plot_all():
     )  # change
 
     my_plot.plot_all_param_all_protocol(grouped_dfs)
-    my_plot.plot_all_param_per_core("serval", dfs["serval"])
+    my_plot.histogram_of_init_and_exec_phase(grouped_dfs, 0.9)
+
+    # my_plot.plot_all_param_per_core("serval", dfs["serval"])
+    # my_plot.plot_all_param_per_core("serval_rc", dfs["serval_rc"])
+    # my_plot.plot_all_param_per_core("serval_rc_bbu", dfs["serval_rc_bbu"])
     # my_plot.plot_all_param_per_core("serval_BCBU", dfs["serval_BCBU"])
-    my_plot.plot_all_param_per_core("caracal", dfs["caracal"])
-    my_plot.plot_all_param_per_core("serval", dfs["serval"])
+    # my_plot.plot_all_param_per_core("caracal", dfs["caracal"])
+    # my_plot.plot_all_param_per_core("serval", dfs["serval"])
 
     # my_plot.plot_cache_hit_rate(grouped_dfs)
     # my_plot.plot_all_param("caracal", grouped_dfs["caracal"])

@@ -48,6 +48,26 @@ class Config {
         } else if (workload_type == "X") { // original not ycsb
             // write only
             w.set_workload(0, 100, 0);
+        } else if (workload_type == "W90") { // original not ycsb
+            // write intensive
+            w.set_workload(10, 90, 0);
+        } else if (workload_type == "W80") { // original not ycsb
+            // write intensive
+            w.set_workload(20, 80, 0);
+        } else if (workload_type == "W70") { // original not ycsb
+            w.set_workload(30, 70, 0);
+        } else if (workload_type == "W60") { // original not ycsb
+            w.set_workload(40, 60, 0);
+        } else if (workload_type == "W99") { // original not ycsb
+            w.set_workload(1, 99, 0);
+        } else if (workload_type == "W10") { // original not ycsb
+            w.set_workload(90, 10, 0);
+        } else if (workload_type == "W20") { // original not ycsb
+            w.set_workload(80, 20, 0);
+        } else if (workload_type == "W30") { // original not ycsb
+            w.set_workload(70, 30, 0);
+        } else if (workload_type == "W40") { // original not ycsb
+            w.set_workload(60, 40, 0);
         } else {
             printf("Invalid workload_type, must be either of A,B,C,F\n");
             printf(

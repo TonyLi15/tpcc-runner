@@ -9,11 +9,11 @@
 #include "benchmarks/ycsb/include/tx_runner.hpp"
 #include "benchmarks/ycsb/include/tx_utils.hpp"
 #include "indexes/masstree.hpp"
-#include "protocols/serval_rc/include/operation_set.hpp"
-#include "protocols/serval_rc/include/serval_rc.hpp"
-#include "protocols/serval_rc/include/value.hpp"
-#include "protocols/serval_rc/ycsb/initializer.hpp"
-#include "protocols/serval_rc/ycsb/transaction.hpp"
+#include "protocols/serval_rc_bbu/include/operation_set.hpp"
+#include "protocols/serval_rc_bbu/include/serval_rc_bbu.hpp"
+#include "protocols/serval_rc_bbu/include/value.hpp"
+#include "protocols/serval_rc_bbu/ycsb/initializer.hpp"
+#include "protocols/serval_rc_bbu/ycsb/transaction.hpp"
 #include "protocols/ycsb_common/definitions.hpp"
 #include "protocols/ycsb_common/rendezvous_barrier.hpp"
 #include "utils/logger.hpp"
@@ -40,9 +40,11 @@ void do_write_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
         for (size_t j = 0; j < w_set.size(); j++) {
             serval.update_write_bitmaps(get_id<Record>(), w_set[j]->index_,
                                         w_set[j]->w_bitmap_);
+            assert(w_set[j]->w_bitmap_);
         }
         serval.terminate_transaction();
     }
+    serval.finalize_update_write_bitmaps();
 }
 
 template <typename Protocol>
@@ -61,6 +63,7 @@ void do_read_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
                 serval.append_pending_version(
                     get_id<Record>(), rw_set[j]->index_, rw_set[j]->pending_,
                     rw_set[j]->w_bitmap_);
+                assert(rw_set[j]->w_bitmap_);
             }
         }
         serval.terminate_transaction();

@@ -6,18 +6,22 @@
 #include "benchmarks/ycsb/include/config.hpp"
 #include "protocols/serval/include/row_region.hpp"
 
+#ifndef NUM_HOT_KEYS
+#define NUM_HOT_KEYS 77  // contended keys targeted by 7 of 10 ops; must be >= 8
+#endif
+
 class Operation {
-  public:
-    enum Ope { Read, Update };
-    Ope ope_;
-    uint64_t index_;
-    uint64_t value_ = 0;
+ public:
+  enum Ope { Read, Update };
+  Ope ope_;
+  uint64_t index_;
+  uint64_t value_ = 0;
 
-    Version *pending_ = nullptr;
-    // pending version is installed in initialization phase
-    // used in execution phase for write
+  Version *pending_ = nullptr;
+  // pending version is installed in initialization phase
+  // used in execution phase for write
 
-    Operation(Ope operation, uint64_t idx) : ope_(operation), index_(idx) {}
+  Operation(Ope operation, uint64_t idx) : ope_(operation), index_(idx) {}
 };
 
 /*
@@ -28,76 +32,95 @@ class Operation {
  contention optimizations.
  */
 class OperationSet {
-  public:
-    std::vector<Operation *> rw_set_;
-    std::vector<Operation *> w_set_;
+ public:
+  std::vector<Operation *> rw_set_;
+  std::vector<Operation *> w_set_;
 
-    OperationSet() {
-        std::vector<int> contented_keys;
-        for (int i = 0; i < 77; i++) {
-            contented_keys.emplace_back(131072 * i);
-        }
+  // OperationSet() {
+  //   const Config &c = get_config();
 
-        const Config &c = get_config();
+  //   for (uint64_t j = 0; j < 10; j++) {
+  //     int operationType = urand_int(1, 100);
 
-        for (uint64_t j = 0; j < 3; j++) {
-            int operationType = urand_int(1, 100);
-            uint64_t three_of_ten_key =
-                zipf_int(c.get_contention(), c.get_num_records());
-            while (rw_set_.end() !=
-                   std::find_if(rw_set_.begin(), rw_set_.end(),
-                                [three_of_ten_key](const auto &ope) {
-                                    return ope->index_ == three_of_ten_key;
-                                })) {
-                three_of_ten_key =
-                    zipf_int(c.get_contention(), c.get_num_records());
-            }
-            Operation *ope;
-            if (operationType <= c.get_read_propotion()) {
-                // ope = new (MemoryAllocator::allocate(sizeof(Operation)))
-                //     Operation(Operation::Ope::Read, key);
-                ope = new Operation(Operation::Ope::Read, three_of_ten_key);
-            } else {
-                // ope = new (MemoryAllocator::allocate(sizeof(Operation)))
-                //     Operation(Operation::Ope::Update, key);
-                ope = new Operation(Operation::Ope::Update, three_of_ten_key);
-                w_set_.emplace_back(ope);
-            }
-            rw_set_.emplace_back(ope);
-        }
+  //     uint64_t key = zipf_int(c.get_contention(), c.get_num_records());
+  //     while (rw_set_.end() != std::find_if(rw_set_.begin(), rw_set_.end(),
+  //                                          [key](const auto &ope) {
+  //                                            return ope->index_ == key;
+  //                                          })) {
+  //       key = zipf_int(c.get_contention(), c.get_num_records());
+  //     }
 
-        for (uint64_t j = 0; j < 7; j++) {
-            int operationType = urand_int(1, 100);
-            uint64_t seven_of_ten_key = contented_keys
-                [zipf_int(c.get_contention(), c.get_num_records()) % 77];
-            while (rw_set_.end() !=
-                   std::find_if(rw_set_.begin(), rw_set_.end(),
-                                [seven_of_ten_key](const auto &ope) {
-                                    return ope->index_ == seven_of_ten_key;
-                                })) {
-                seven_of_ten_key = contented_keys
-                    [zipf_int(c.get_contention(), c.get_num_records()) % 77];
-            }
-            // contented_keys[urand_int(0, 76)]; // TODO: change
-            Operation *ope;
-            if (operationType <= c.get_read_propotion()) {
-                // ope = new (MemoryAllocator::allocate(sizeof(Operation)))
-                //     Operation(Operation::Ope::Read, key);
-                ope = new Operation(Operation::Ope::Read, seven_of_ten_key);
-            } else {
-                // ope = new (MemoryAllocator::allocate(sizeof(Operation)))
-                //     Operation(Operation::Ope::Update, key);
-                ope = new Operation(Operation::Ope::Update, seven_of_ten_key);
-                w_set_.emplace_back(ope);
-            }
-            rw_set_.emplace_back(ope);
-        }
+  //     Operation *ope;
+  //     if (operationType <= c.get_read_propotion()) {
+  //       ope = new Operation(Operation::Ope::Read, key);
+  //     } else {
+  //       ope = new Operation(Operation::Ope::Update, key);
+  //       w_set_.emplace_back(ope);
+  //     }
+  //     rw_set_.emplace_back(ope);
+  //   }
+  // }
+
+  OperationSet() {
+      const Config &c = get_config();
+
+      std::vector<int> contented_keys;
+      // preserve legacy spacing (131072) at the default 77 hot keys
+      uint64_t hot_spacing = (NUM_HOT_KEYS == 77)
+          ? 131072 : c.get_num_records() / NUM_HOT_KEYS;
+      for (int i = 0; i < NUM_HOT_KEYS; i++) {
+          contented_keys.emplace_back(hot_spacing * i);
+      }
+
+      for (uint64_t j = 0; j < 3; j++) {
+          int operationType = urand_int(1, 100);
+          uint64_t three_of_ten_key =
+              zipf_int(c.get_contention(), c.get_num_records());
+          while (rw_set_.end() !=
+                 std::find_if(rw_set_.begin(), rw_set_.end(),
+                              [three_of_ten_key](const auto &ope) {
+                                  return ope->index_ == three_of_ten_key;
+                              })) {
+              three_of_ten_key =
+                  zipf_int(c.get_contention(), c.get_num_records());
+          }
+          Operation *ope;
+          if (operationType <= c.get_read_propotion()) {
+              ope = new Operation(Operation::Ope::Read, three_of_ten_key);
+          } else {
+              ope = new Operation(Operation::Ope::Update, three_of_ten_key);
+              w_set_.emplace_back(ope);
+          }
+          rw_set_.emplace_back(ope);
+      }
+
+      for (uint64_t j = 0; j < 7; j++) {
+          int operationType = urand_int(1, 100);
+          uint64_t seven_of_ten_key = contented_keys
+              [zipf_int(c.get_contention(), c.get_num_records()) % NUM_HOT_KEYS];
+          while (rw_set_.end() !=
+                 std::find_if(rw_set_.begin(), rw_set_.end(),
+                              [seven_of_ten_key](const auto &ope) {
+                                  return ope->index_ == seven_of_ten_key;
+                              })) {
+              seven_of_ten_key = contented_keys
+                  [zipf_int(c.get_contention(), c.get_num_records()) % NUM_HOT_KEYS];
+          }
+          // contented_keys[urand_int(0, 76)]; // TODO: change
+          Operation *ope;
+          if (operationType <= c.get_read_propotion()) {
+              ope = new Operation(Operation::Ope::Read, seven_of_ten_key);
+          } else {
+              ope = new Operation(Operation::Ope::Update, seven_of_ten_key);
+              w_set_.emplace_back(ope);
+          }
+          rw_set_.emplace_back(ope);
+      }
+  }
+
+  ~OperationSet() {
+    for (uint64_t i = 0; i < rw_set_.size(); i++) {
+      delete rw_set_[i];
     }
-
-    ~OperationSet() {
-        for (uint64_t i = 0; i < rw_set_.size(); i++) {
-            // MemoryAllocator::deallocate(rw_set_[i]);
-            delete rw_set_[i];
-        }
-    }
+  }
 };

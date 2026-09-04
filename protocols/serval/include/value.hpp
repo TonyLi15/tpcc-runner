@@ -32,4 +32,42 @@ struct Value {
     bool try_lock() { return rwl.try_lock(); }
 
     void unlock() { rwl.unlock(); }
+
+    void gc_master_version(Version *latest, Stat &stat) {
+        assert(master_);
+        assert(master_->rec);
+        delete reinterpret_cast<Record *>(master_->rec);
+        delete master_;
+        stat.increment(Stat::MeasureType::Delete);
+        master_ = latest;
+    }
+
+    void initialize_the_row(uint64_t epoch, Stat &stat) {
+        /*
+        [!global_array_.is_dirty() && !has_dirty_region()]
+        epoch 7: major gc (initialize_the_row)
+        epoch 10: initialization phase (initialize_the_row)
+        */
+        assert(!(global_array_.is_dirty() && has_dirty_region()));
+
+        // 1. store the final state of one previous epoch to val->master_
+        if (global_array_.is_dirty()) {
+            assert(!has_dirty_region());
+            auto [id, latest] = global_array_.pop_final_state();
+            assert(latest);
+            global_array_.gc(stat);
+            gc_master_version(latest, stat);
+        } else if (has_dirty_region()) {
+            assert(!global_array_.is_dirty());
+            auto [id, latest] = row_region_->pop_final_state();
+            assert(latest);
+            row_region_->initialize_core_bitmap(); // initialize
+            gc_master_version(latest, stat);
+        }
+
+        // 2. update val->epoch_
+        asm volatile("" : : : "memory");
+        __atomic_store_n(&epoch_, epoch, __ATOMIC_SEQ_CST);
+        asm volatile("" : : : "memory");
+    }
 };

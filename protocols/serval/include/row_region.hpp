@@ -10,6 +10,18 @@
 #include "utils/bitmap.hpp"
 #include "utils/numa.hpp"
 
+#if NUM_CORE > 64
+using CoreBitmap = __uint128_t;
+inline CoreBitmap core_bit_at(uint64_t core) {
+    return set_bit_at_the_given_location_128((int)core);
+}
+#else
+using CoreBitmap = uint64_t;
+inline CoreBitmap core_bit_at(uint64_t core) {
+    return set_bit_at_the_given_location(core);
+}
+#endif
+
 class Version {
   public:
     enum class VersionStatus { PENDING, STABLE }; // status of version
@@ -66,22 +78,22 @@ class GlobalVersionArray {
         ids_slots_.insert(it, std::make_pair(serial_id, version));
     }
 
-    void minor_gc() {
+    void minor_gc(Stat &stat) {
         for (auto &[id, version] : ids_slots_) {
             [[maybe_unused]] int id_debug = id;
             assert(version);
             assert(version->rec);
             assert(version->status == Version::VersionStatus::STABLE);
-            // MemoryAllocator::deallocate(version->rec);
-            // MemoryAllocator::deallocate(version);
+
             delete reinterpret_cast<Record *>(version->rec);
             delete version;
+            stat.increment(Stat::MeasureType::Delete);
             version = nullptr;
         }
     }
 
-    void clear_memory() {
-        minor_gc();
+    void gc(Stat &stat) {
+        minor_gc(stat);
         ids_slots_.clear();
     }
 
@@ -113,19 +125,20 @@ class PerCoreVersionArray { // Serval's per-core version array
     alignas(64) uint64_t transaction_bitmap_ = 0;
     std::vector<Version *> slots_;
 
-    void minor_gc() {
+    void minor_gc(Stat &stat) {
         for (Version *&version : slots_) {
             assert(version);
             assert(version->rec);
             assert(version->status == Version::VersionStatus::STABLE);
             delete reinterpret_cast<Record *>(version->rec);
             delete version;
+            stat.increment(Stat::MeasureType::Delete);
             version = nullptr;
         }
     }
 
-    void clear_memory() {
-        minor_gc();
+    void do_gc_and_initialize_tx_bitmap(Stat &stat) {
+        minor_gc(stat);
         __atomic_store_n(&transaction_bitmap_, 0,
                          __ATOMIC_SEQ_CST); // TODO: 再考
         slots_.clear();
@@ -221,12 +234,12 @@ class PerCoreVersionArray { // Serval's per-core version array
 
 class RowRegion { // Serval's RowRegion
   public:
-    uint64_t core_bitmap_ = 0;
+    CoreBitmap core_bitmap_ = 0;
     PerCoreVersionArray
-        *arrays_[LOGICAL_CORE_SIZE]; // TODO: alignas(64) をつけるか検討
+        *arrays_[NUM_CORE]; // TODO: alignas(64) をつけるか検討
 
     void initialize_core_bitmap() {
-        __atomic_store_n(&core_bitmap_, 0, __ATOMIC_SEQ_CST);
+        __atomic_store_n(&core_bitmap_, (CoreBitmap)0, __ATOMIC_SEQ_CST);
     };
 
     std::tuple<bool, uint64_t, uint64_t> identify_visible_version(uint64_t core,
@@ -271,26 +284,28 @@ class RowRegion { // Serval's RowRegion
         return arrays_[core]->pop_latest();
     }
 
-    void clear_memory(uint64_t core) { arrays_[core]->clear_memory(); }
+    void gc_and_initialize_tx_bitmap(uint64_t core, Stat &stat) {
+        arrays_[core]->do_gc_and_initialize_tx_bitmap(stat);
+    }
 
     // for debug
     bool is_first_write(uint64_t core) {
-        uint64_t core_bitmap = __atomic_load_n(&core_bitmap_, __ATOMIC_SEQ_CST);
+        CoreBitmap core_bitmap = __atomic_load_n(&core_bitmap_, __ATOMIC_SEQ_CST);
         return !is_bit_set_at_the_position(core_bitmap, core);
     }
 
-    void append(uint64_t core, Version *version, uint64_t tx) {
+    void append(uint64_t core, Version *version, uint64_t tx, Stat &stat) {
         assert(version);
         assert(tx < 64);
         /* Update core bitmap if this is the first append in the current epoch.
         Otherwise, core_bitmap_ is already updated.
         */
-        uint64_t core_bitmap = __atomic_load_n(&core_bitmap_, __ATOMIC_SEQ_CST);
+        CoreBitmap core_bitmap = __atomic_load_n(&core_bitmap_, __ATOMIC_SEQ_CST);
         bool is_first_write = !is_bit_set_at_the_position(core_bitmap, core);
         if (is_first_write) {
-            clear_memory(core); // clear transaction bitmap
+            gc_and_initialize_tx_bitmap(core, stat);
             __atomic_or_fetch(&core_bitmap_,
-                              set_bit_at_the_given_location(core),
+                              core_bit_at(core),
                               __ATOMIC_SEQ_CST); // core 2: 0010 0000 ... 0000
             assert(is_bit_set_at_the_position(
                 __atomic_load_n(&core_bitmap_, __ATOMIC_SEQ_CST), core));
@@ -302,18 +317,14 @@ class RowRegion { // Serval's RowRegion
 
     RowRegion() {
         pid_t tid = gettid(); // fetch the thread's tid
-        for (uint64_t core_id = 0; core_id < LOGICAL_CORE_SIZE; core_id++) {
+        for (uint64_t core_id = 0; core_id < NUM_CORE; core_id++) {
             Numa numa(tid, core_id); // move to the designated core
-                                     // arrays_[core_id] =
-            //     new (MemoryAllocator::allocate(sizeof(PerCoreVersionArray)))
-            //         PerCoreVersionArray(); // TOOD: あってる？
             arrays_[core_id] = new PerCoreVersionArray; // TOOD: あってる？
         }
     }
 
     ~RowRegion() {
-        for (uint64_t core_id = 0; core_id < LOGICAL_CORE_SIZE; core_id++) {
-            // MemoryAllocator::deallocate(arrays_[core_id]);
+        for (uint64_t core_id = 0; core_id < NUM_CORE; core_id++) {
             delete arrays_[core_id];
         }
     }

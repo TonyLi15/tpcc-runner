@@ -16,7 +16,8 @@
   lower 32 bits: serialization id in the epoch
 */
 
-static uint64_t convert_to_global_id(uint64_t epoch, uint64_t serial_id) {
+static uint64_t convert_to_serial_id_with_epoch(uint64_t epoch,
+                                                uint64_t serial_id) {
     return epoch << 32 | serial_id;
 }
 
@@ -35,7 +36,7 @@ class PerCoreBuffer { // Caracal's per-core buffer
     bool appendable(Version *version, uint64_t epoch, uint64_t serial_id) {
         assert(version);
 
-        uint64_t global_id = convert_to_global_id(epoch, serial_id);
+        uint64_t global_id = convert_to_serial_id_with_epoch(epoch, serial_id);
 
         // append to per-core buffer
         assert(ids_slots_.size() < MAX_SLOTS_OF_PER_CORE_BUFFER);
@@ -53,7 +54,7 @@ class PerCoreBuffer { // Caracal's per-core buffer
         return false;    // the buffer is full
     }
 
-    void initialize() { ids_slots_.clear(); }
+    void clear_slots() { ids_slots_.clear(); }
 };
 
 class GlobalVersionArray {
@@ -66,19 +67,11 @@ class GlobalVersionArray {
 
     bool try_lock() { return rwl.try_lock(); }
 
-    void unlock() { rwl.unlock(); }
-
-    void batch_append(PerCoreBuffer *buffer, uint64_t epoch_for_gc) {
-        for (uint64_t i = 0; i < buffer->ids_slots_.size(); i++) {
-            append_with_gc(buffer->ids_slots_[i].second,
-                           buffer->ids_slots_[i].first, epoch_for_gc);
-        }
-        buffer->initialize();
-    }
+    void unlock() { rwl.unlock(); };
 
     // for debug
     bool is_exist(uint64_t epoch, uint64_t serial_id) {
-        uint64_t global_id = convert_to_global_id(epoch, serial_id);
+        uint64_t global_id = convert_to_serial_id_with_epoch(epoch, serial_id);
 
         // Use std::find with a custom comparator
         auto it = std::find_if(
@@ -112,7 +105,7 @@ class GlobalVersionArray {
 
     std::pair<uint64_t, Version *> search_visible_version(uint64_t epoch,
                                                           uint64_t serial_id) {
-        uint64_t global_id = convert_to_global_id(epoch, serial_id);
+        uint64_t global_id = convert_to_serial_id_with_epoch(epoch, serial_id);
 
         assert(!ids_slots_.empty());
 
@@ -134,59 +127,75 @@ class GlobalVersionArray {
         return {it->first, it->second};
     }
 
-    void append(Version *version, uint64_t epoch, uint64_t serial_id) {
-        assert(version);
-        append_with_gc(version, convert_to_global_id(epoch, serial_id), epoch);
+    // contented
+    void batch_append(PerCoreBuffer *buffer, uint64_t cur_epoch, Stat &stat) {
+        minor_gc(cur_epoch, stat);
+        // batch_append from buffer to global array
+        for (auto &[id, version] : buffer->ids_slots_) {
+            append_with_no_gc(id, version);
+        }
+        buffer->clear_slots();
     }
-    void append_with_gc(Version *version, uint64_t global_id,
-                        [[maybe_unused]] uint64_t epoch_for_gc) {
+
+    // uncontented
+    void append_with_gc(uint64_t epoch, uint64_t serial_id, Version *version,
+                        Stat &stat) {
+        assert(version);
+        minor_gc(epoch, stat);
+        append_with_no_gc(convert_to_serial_id_with_epoch(epoch, serial_id),
+                          version);
+    }
+
+    void append_with_no_gc(uint64_t serial_id_with_epoch, Version *version) {
         assert(version);
         // Find the position to append the version
-        auto it = std::upper_bound(ids_slots_.begin(), ids_slots_.end(),
-                                   std::make_pair(global_id, nullptr),
-                                   [](const auto &pair, const auto &new_pair) {
-                                       return pair.first < new_pair.first;
-                                   });
+        auto it =
+            std::upper_bound(ids_slots_.begin(), ids_slots_.end(),
+                             std::make_pair(serial_id_with_epoch, nullptr),
+                             [](const auto &pair, const auto &new_pair) {
+                                 return pair.first < new_pair.first;
+                             });
 
         // Append to the corresponding position
-        ids_slots_.insert(it, std::make_pair(global_id, version));
-
-        minor_gc(epoch_for_gc);
+        ids_slots_.insert(it, std::make_pair(serial_id_with_epoch, version));
     }
 
+    void minor_gc(uint64_t epoch, Stat &stat) {
+        assert(!ids_slots_.empty());
+        uint64_t serial_id_with_epoch =
+            convert_to_serial_id_with_epoch(epoch, 0);
+        assert(is_exist_visible_version(serial_id_with_epoch));
+        auto itr = ids_slots_.begin();
+        while (std::next(itr) != ids_slots_.end()) {
+            if (serial_id_with_epoch <= std::next(itr)->first)
+                break;
+
+            /*
+            std::next(itr)->first < cur_epoch のとき、
+            std::next(itr)->firstがfinal stateの候補となるから、
+            その前の、itrは削除可能。
+
+            cur_epoch: 10
+            std::next(itr): 8 8 8 9 9 [9] 10 10
+            */
+            gc(itr, serial_id_with_epoch, stat);
+            itr = ids_slots_.erase(itr);
+        }
+        assert(!ids_slots_.empty());
+        assert(is_exist_visible_version(serial_id_with_epoch));
+    }
+
+  private:
     void gc(typename std::vector<std::pair<uint64_t, Version *>>::iterator itr,
-            [[maybe_unused]] uint64_t epoch) {
-        auto [id, version] = *itr;
-        assert(id < epoch);
+            [[maybe_unused]] uint64_t serial_id_with_epoch, Stat &stat) {
+        auto [serial_id, version] = *itr;
+        assert(serial_id < serial_id_with_epoch);
         assert(version);
         assert(version->status == Version::VersionStatus::STABLE);
         assert(version->rec);
         delete reinterpret_cast<Record *>(version->rec);
         delete version;
-    }
-    void minor_gc(uint64_t cur_e) {
-        assert(!ids_slots_.empty());
-        uint64_t cur_epoch = convert_to_global_id(cur_e, 0);
-        assert(is_exist_visible_version(cur_epoch));
-        auto itr = ids_slots_.begin();
-        while (std::next(itr) != ids_slots_.end()) {
-            if (cur_epoch <= std::next(itr)->first)
-                break;
-            gc(itr, cur_epoch);
-            itr = ids_slots_.erase(itr);
-        }
-        assert(!ids_slots_.empty());
-        assert(is_exist_visible_version(cur_epoch));
-    }
-    void major_gc(uint64_t old_e) {
-        assert(!ids_slots_.empty());
-        uint64_t old_epoch = convert_to_global_id(old_e, 0);
-        auto itr = ids_slots_.begin();
-        while (itr != ids_slots_.end()) {
-            if (old_epoch < itr->first)
-                break;
-            gc(itr, old_epoch);
-        }
+        stat.increment(Stat::MeasureType::Delete);
     }
 
     bool is_empty() { return ids_slots_.empty(); }
@@ -195,23 +204,19 @@ class GlobalVersionArray {
 class RowBuffer { // Caracal's per-core buffer
   public:
     PerCoreBuffer
-        *buffers_[LOGICAL_CORE_SIZE]; // TODO: alignas(64) をつけるか検討
+        *buffers_[NUM_CORE]; // TODO: alignas(64) をつけるか検討
 
     RowBuffer() {
         pid_t main_tid = gettid(); // fetch the main thread's tid
-        for (uint64_t core_id = 0; core_id < LOGICAL_CORE_SIZE; core_id++) {
+        for (uint64_t core_id = 0; core_id < NUM_CORE; core_id++) {
             Numa numa(main_tid,
                       core_id); // move to the designated core from main thread
-            // buffers_[core_id] =
-            //     new (MemoryAllocator::allocate(sizeof(PerCoreBuffer)))
-            //         PerCoreBuffer(); // TOOD: あってる？
             buffers_[core_id] = new PerCoreBuffer();
         }
     }
 
     ~RowBuffer() {
-        for (uint64_t core_id = 0; core_id < LOGICAL_CORE_SIZE; core_id++) {
-            // MemoryAllocator::deallocate(buffers_[core_id]);
+        for (uint64_t core_id = 0; core_id < NUM_CORE; core_id++) {
             delete buffers_[core_id];
         }
     }

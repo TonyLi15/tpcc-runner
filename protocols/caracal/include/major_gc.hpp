@@ -2,40 +2,47 @@
 
 #include <cassert>
 #include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 #include "protocols/caracal/include/row_buffer.hpp"
 #include "protocols/caracal/include/version.hpp"
 #include "protocols/ycsb_common/definitions.hpp"
 
+#include "utils/tsc.hpp"
+
 class MajorGC {
-  public:
-    void collect(uint64_t cur_epoc, Version *version,
-                 GlobalVersionArray &array) {
-        versions_.emplace_back(cur_epoc, version, array);
+ public:
+  void collect(uint64_t cur_epoch, GlobalVersionArray *array) {
+    arrays_[cur_epoch].insert(array);
+  }
+
+  void major_gc(uint64_t new_epoch, Stat &stat) {
+    if (arrays_.empty()) return;
+
+    auto itr = arrays_.begin();
+    while (itr != arrays_.end()) {
+      auto [epoch, g_arrays] = *itr;
+      if ((new_epoch - k_) <= epoch) break;
+
+      // (new_epoch - k_) > epoch
+      // であるようなg_arrayにアクセスしてGCを行う
+
+      for (auto &g_array : g_arrays) {
+        uint64_t start = rdtscp();
+        g_array->lock();
+        stat.add(Stat::MeasureType::WaitInGC, rdtscp() - start);
+        g_array->minor_gc(new_epoch, stat);
+        g_array->unlock();
+      }
+
+      itr = arrays_.erase(itr);  // TODO: 再考
     }
+  }
 
-    void major_gc(uint64_t cur_epoch) {
-        if (versions_.empty())
-            return;
+ private:
+  static const int k_ = 4;
 
-        auto itr = versions_.begin();
-        while (itr != versions_.end()) {
-            auto [id, version, array] = *itr;
-            if ((cur_epoch - k_) <= id)
-                break;
-
-            array.lock();
-            array.major_gc(cur_epoch - k_);
-            array.unlock();
-
-            itr = versions_.erase(itr);
-        }
-    }
-
-  private:
-    static const int k_ = 4;
-
-    std::vector<std::tuple<uint64_t, Version *, GlobalVersionArray &>>
-        versions_;
+  // <epoch, ptr of array_list>
+  std::map<uint64_t, std::unordered_set<GlobalVersionArray *>> arrays_;
 };

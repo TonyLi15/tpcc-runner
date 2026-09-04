@@ -50,6 +50,23 @@ set(CMAKE_CXX_FLAGS_RELEASE        "-Ofast -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-Ofast -DNDEBUG -g")
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
+# Lock-contention instrumentation (RWLock acquire/contend/hold counters).
+# OFF by default so normal builds and the main results are unaffected; enable
+# with -DLOCK_STAT=ON for the white-box lock-contention experiment.
+option(LOCK_STAT "Enable lock-contention instrumentation in RWLock" OFF)
+if(LOCK_STAT)
+    add_definitions(-DLOCK_STAT)
+    message(STATUS "LOCK_STAT: ON (lock-contention instrumentation enabled)")
+endif()
+# Counts-only mode: keep acquire/contend counts but compile out the rdtscp
+# hold-timing (tl_lock_hold stays 0). Needed for cheetah at extreme skew where
+# the serializing rdtscp in the critical section livelocks the run.
+option(LOCK_STAT_COUNTS_ONLY "Drop rdtscp hold-timing, keep lock counts" OFF)
+if(LOCK_STAT_COUNTS_ONLY)
+    add_definitions(-DLOCK_STAT_COUNTS_ONLY)
+    message(STATUS "LOCK_STAT_COUNTS_ONLY: ON (hold-timing disabled)")
+endif()
+
 list(APPEND COMMON_COMPILE_FLAGS "-Werror" "-Wall" "-Wextra" "-fPIC")
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # For language server.
@@ -153,13 +170,34 @@ else ()
     add_definitions(-DRC=0)
 endif ()
 
+if (DEFINED CARACAL_MAJOR_GC)
+    add_definitions(-DCARACAL_MAJOR_GC=${CARACAL_MAJOR_GC})
+else ()
+    add_definitions(-DCARACAL_MAJOR_GC=0)
+endif ()
+
+if (DEFINED NUM_CORE)
+    set(NUM_CORE_VAL ${NUM_CORE})
+    add_definitions(-DNUM_CORE=${NUM_CORE})
+else ()
+    set(NUM_CORE_VAL 64)
+    add_definitions(-DNUM_CORE=64)
+endif ()
+
+if (DEFINED NUM_HOT_KEYS)
+    set(NUM_HOT_KEYS_VAL ${NUM_HOT_KEYS})
+    add_definitions(-DNUM_HOT_KEYS=${NUM_HOT_KEYS})
+else ()
+    set(NUM_HOT_KEYS_VAL 77)
+endif ()
+
 
 ###############################################################################
 #                            CC Specific Parameters                           #
 ###############################################################################
 
-set(CC_ALG "NAIVE" CACHE STRING "Choose CC Algorithm: NAIVE, SILO, NOWAIT, MVTO, WAITDIE, CARACAL, SERVAL, SERVAL_RC")
-set_property(CACHE CC_ALG PROPERTY STRINGS "NAIVE" "SILO" "NOWAIT" "MVTO" "WAITDIE" "CARACAL" "SERVAL" "SERVAL_RC")
+set(CC_ALG "NAIVE" CACHE STRING "Choose CC Algorithm: NAIVE, SILO, NOWAIT, MVTO, WAITDIE, CARACAL, SERVAL, SERVAL_RC, SERVAL_RC_BBU, CHEETAH")
+set_property(CACHE CC_ALG PROPERTY STRINGS "NAIVE" "SILO" "NOWAIT" "MVTO" "WAITDIE" "CARACAL" "SERVAL" "SERVAL_RC" "SERVAL_RC_BBU, CHEETAH")
 
 set(CC_LINK_LIBRARIES "")
 set(CC_INCLUDE_DIRECTORIES "")
@@ -196,7 +234,17 @@ elseif ("${CC_ALG}" STREQUAL "SERVAL")
   list(APPEND CC_LINK_LIBRARIES "masstree")
   add_dep(masstree https://github.com/wattlebirdaz/masstree-beta.git MVTO) # MVTO branch
   list(APPEND CC_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/src/") # masstree
-  elseif ("${CC_ALG}" STREQUAL "SERVAL_RC")
+elseif ("${CC_ALG}" STREQUAL "SERVAL_RC")
+  set(CMAKE_CXX_STANDARD 17)
+  list(APPEND CC_LINK_LIBRARIES "masstree")
+  add_dep(masstree https://github.com/wattlebirdaz/masstree-beta.git MVTO) # MVTO branch
+  list(APPEND CC_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/src/") # masstree
+elseif ("${CC_ALG}" STREQUAL "SERVAL_RC_BBU")
+  set(CMAKE_CXX_STANDARD 17)
+  list(APPEND CC_LINK_LIBRARIES "masstree")
+  add_dep(masstree https://github.com/wattlebirdaz/masstree-beta.git MVTO) # MVTO branch
+  list(APPEND CC_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/_deps/src/") # masstree
+elseif ("${CC_ALG}" STREQUAL "CHEETAH")
   set(CMAKE_CXX_STANDARD 17)
   list(APPEND CC_LINK_LIBRARIES "masstree")
   add_dep(masstree https://github.com/wattlebirdaz/masstree-beta.git MVTO) # MVTO branch
@@ -278,7 +326,14 @@ message(STATUS "[ADDED] tpccrunner_static")
 
 set(EXECUTABLE "${PROJECT_SOURCE_DIR}/executables/${BENCH_NAME}_${CC_NAME}.cpp")
 if ("${BENCH_NAME}" STREQUAL "ycsb")
-  set(FILENAME "${BENCH_NAME}${PAYLOAD_SIZE}_${MAX_SLOTS_OF_PER_CORE_BUFFER}_${NUM_TXS_IN_ONE_EPOCH}_${BCBU}_${RC}_${CC_NAME}")
+  if (NOT "${NUM_CORE_VAL}" STREQUAL "64")
+    set(FILENAME "${BENCH_NAME}${PAYLOAD_SIZE}_${MAX_SLOTS_OF_PER_CORE_BUFFER}_${NUM_CORE_VAL}c_${NUM_TXS_IN_ONE_EPOCH}_${BCBU}_${RC}_${CC_NAME}")
+  else ()
+    set(FILENAME "${BENCH_NAME}${PAYLOAD_SIZE}_${MAX_SLOTS_OF_PER_CORE_BUFFER}_${NUM_TXS_IN_ONE_EPOCH}_${BCBU}_${RC}_${CC_NAME}")
+  endif ()
+  if (NOT "${NUM_HOT_KEYS_VAL}" STREQUAL "77")
+    set(FILENAME "${FILENAME}_hk${NUM_HOT_KEYS_VAL}")
+  endif ()
 else ()
   set(FILENAME "${BENCH_NAME}_${CC_NAME}")
 endif ()
@@ -287,7 +342,7 @@ target_compile_definitions(${FILENAME} PUBLIC "${BENCHMARK_DEFINITION}")
 target_link_options(${FILENAME} PUBLIC "-pthread")
 target_compile_options(${FILENAME} PUBLIC "-pthread")
 target_compile_options(${FILENAME} PRIVATE ${COMMON_COMPILE_FLAGS})
-target_link_libraries(${FILENAME} tpccrunner_static)
+target_link_libraries(${FILENAME} tpccrunner_static atomic)
 set_target_properties(${FILENAME} PROPERTIES CXX_EXTENTIONS OFF ENABLE_EXPORTS ON)
 set_target_properties(
   ${FILENAME}
