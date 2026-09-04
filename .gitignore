@@ -1,1 +1,36 @@
 *~
+*.pyc
+__pycache__/
+
+.vscode/
+.claude/
+
+# corrupted-repo backup kept for recovery only
+.git.corrupt.bak/
+
+# build outputs
+build*/
+archive_build/
+tectonic_out/
+a.out
+*.log
+
+# scratch / superseded sources kept locally
+protocols_tmp/
+*.tar.gz
+
+# LaTeX build products
+*.aux
+*.bbl
+*.blg
+*.out
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+
+# Experiment data. The raw per-run output is bulky and stays local; the
+# summary CSVs and the plots the paper is built from are force-added
+# (git add -f) and tracked despite this rule.
+experiments_*/
+write_only_aug21/
+ycsb-A-last-tony/
