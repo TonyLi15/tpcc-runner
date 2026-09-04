@@ -191,6 +191,21 @@ class WriteBitmap {
     return version;
   }
 
+#ifdef NO_NWR
+  /*
+  Ablation (contribution A1). With the Non-visible Write Rule disabled, a
+  non-final writer that identify_write_version() left without a version
+  materializes one anyway. No reader can reach it -- no placeholder is keyed
+  by this writer, which is exactly why NWR was able to skip it -- so it is
+  not published in placeholders_ and is reclaimed by its own core at the end
+  of the execution phase instead of by the final reader.
+  */
+  Version *create_skipped_version(Stat &stat) {
+    return create_pending_version(stat);
+  }
+  void gc_skipped_version(Version *&version, Stat &stat) { gc(version, stat); }
+#endif
+
   int count_prefix_sum(uint64_t core) {
     /*
     core: 4

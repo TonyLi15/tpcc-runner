@@ -108,6 +108,10 @@ void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
       }
     }
   }
+#ifdef NO_NWR
+  // Inside the timed execution phase: NWR avoids this reclamation too.
+  serval.reclaim_skipped_versions();
+#endif
 }
 
 void rendezvous_barrier_to_start(RendezvousBarrierVariable::BarrierType type,

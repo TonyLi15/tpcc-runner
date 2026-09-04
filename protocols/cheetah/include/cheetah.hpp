@@ -149,15 +149,41 @@ class Serval {
     Rec *rec = nullptr;
     Version *pending = w_bitmap->identify_write_version(
         core_, get_tx_serial(serial_id_), stat_);
+#ifdef NO_NWR
+    // Ablation: pay for the version the Non-visible Write Rule would skip.
+    bool is_skipped = false;
+    if (!pending) {
+      pending = w_bitmap->create_skipped_version(stat_);
+      is_skipped = true;
+    }
+#endif
     if (pending) {
       rec = reinterpret_cast<Rec *>(operator new(record_size));
       __atomic_store_n(&pending->rec, rec, __ATOMIC_SEQ_CST);  // write
       __atomic_store_n(&pending->status, Version::VersionStatus::STABLE,
                        __ATOMIC_SEQ_CST);
+#ifdef NO_NWR
+      if (is_skipped) skipped_versions_.emplace_back(w_bitmap, pending);
+#endif
     }
 
     return rec;
   }
+
+#ifdef NO_NWR
+  /*
+  Reclaim the versions materialized above. They are unreachable by any
+  reader, so no other core can be holding them; each core frees its own at
+  the end of the execution phase, on the critical path, so the ablation
+  measures the reclamation NWR also avoids.
+  */
+  void reclaim_skipped_versions() {
+    for (auto &[w_bitmap, version] : skipped_versions_) {
+      w_bitmap->gc_skipped_version(version, stat_);
+    }
+    skipped_versions_.clear();
+  }
+#endif
 
   uint64_t core_;
   uint64_t serial_id_;  // 0 - 4096
@@ -171,6 +197,10 @@ class Serval {
 
   // <core, txbitmap>
   std::unordered_map<WriteBitmap *, uint64_t> bitmaps_;  // used for write phase
+
+#ifdef NO_NWR
+  std::vector<std::pair<WriteBitmap *, Version *>> skipped_versions_;
+#endif
 
   uint64_t get_core_serial(uint64_t serial_id) { return serial_id / NUM_TXS_IN_ONE_EPOCH_IN_ONE_CORE; }
   uint64_t get_tx_serial(uint64_t serial_id) { return serial_id % NUM_TXS_IN_ONE_EPOCH_IN_ONE_CORE; }

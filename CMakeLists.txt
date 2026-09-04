@@ -67,6 +67,17 @@ if(LOCK_STAT_COUNTS_ONLY)
     message(STATUS "LOCK_STAT_COUNTS_ONLY: ON (hold-timing disabled)")
 endif()
 
+# Ablation for contribution A1. With NO_NWR=ON, Cheetah keeps its bitmaps,
+# placeholders and integrated GC but stops skipping non-visible writes, so
+# every writer materializes a version. The gap against a normal Cheetah build
+# isolates what the Non-visible Write Rule contributes. Binary gets a _nonwr
+# suffix so both can live in the same bin directory.
+option(NO_NWR "Disable the Non-visible Write Rule in Cheetah (ablation)" OFF)
+if(NO_NWR)
+    add_definitions(-DNO_NWR)
+    message(STATUS "NO_NWR: ON (Non-visible Write Rule disabled -- ablation build)")
+endif()
+
 list(APPEND COMMON_COMPILE_FLAGS "-Werror" "-Wall" "-Wextra" "-fPIC")
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # For language server.
@@ -333,6 +344,9 @@ if ("${BENCH_NAME}" STREQUAL "ycsb")
   endif ()
   if (NOT "${NUM_HOT_KEYS_VAL}" STREQUAL "77")
     set(FILENAME "${FILENAME}_hk${NUM_HOT_KEYS_VAL}")
+  endif ()
+  if (NO_NWR)
+    set(FILENAME "${FILENAME}_nonwr")
   endif ()
 else ()
   set(FILENAME "${BENCH_NAME}_${CC_NAME}")
