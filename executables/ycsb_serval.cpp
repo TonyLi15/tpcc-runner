@@ -169,7 +169,11 @@ void run_tx(RendezvousBarrier &rend, [[maybe_unused]] ThreadLocalData &t_data,
 
     epoch++;  // new epoch start
 
-    // gc.major_gc(worker_id, epoch, t_data.stat);
+#ifdef SERVAL_MAJOR_GC
+    // Inside the timed region: this is the separate GC pass that Cheetah's
+    // integrated GC (contribution A2) claims to eliminate.
+    gc.major_gc(worker_id, epoch, t_data.stat);
+#endif
   }
   // uint64_t exp_end = worker_id == 0 ? rdtscp() : 0;
   uint64_t exp_end = rdtscp();

@@ -312,7 +312,9 @@ class Serval {
 
     stat_.increment(Stat::MeasureType::Create);
 
-    // major_gc_.collect(epoch_, val);
+#ifdef SERVAL_MAJOR_GC
+    major_gc_.collect(epoch_, val);
+#endif
 
     return version;
   }

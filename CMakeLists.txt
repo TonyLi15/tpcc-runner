@@ -72,6 +72,16 @@ endif()
 # every writer materializes a version. The gap against a normal Cheetah build
 # isolates what the Non-visible Write Rule contributes. Binary gets a _nonwr
 # suffix so both can live in the same bin directory.
+# Serval's separate major GC pass. It is off by default, matching the
+# configuration behind the existing published results, in which both the
+# collect() call and the per-epoch sweep are compiled out. Enable it for the
+# baseline arm that pays for the GC pass Cheetah's contribution A2 removes.
+option(SERVAL_MAJOR_GC "Enable Serval's separate major GC pass" OFF)
+if(SERVAL_MAJOR_GC)
+    add_definitions(-DSERVAL_MAJOR_GC)
+    message(STATUS "SERVAL_MAJOR_GC: ON (separate major GC pass enabled)")
+endif()
+
 option(NO_NWR "Disable the Non-visible Write Rule in Cheetah (ablation)" OFF)
 if(NO_NWR)
     add_definitions(-DNO_NWR)
@@ -347,6 +357,9 @@ if ("${BENCH_NAME}" STREQUAL "ycsb")
   endif ()
   if (NO_NWR)
     set(FILENAME "${FILENAME}_nonwr")
+  endif ()
+  if (SERVAL_MAJOR_GC)
+    set(FILENAME "${FILENAME}_mgc")
   endif ()
 else ()
   set(FILENAME "${BENCH_NAME}_${CC_NAME}")

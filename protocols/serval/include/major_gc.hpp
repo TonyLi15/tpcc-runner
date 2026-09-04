@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <map>
 #include <unordered_set>
 
 #include "protocols/serval/include/value.hpp"
