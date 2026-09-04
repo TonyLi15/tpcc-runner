@@ -43,7 +43,10 @@ class Serval {
 
     tables.insert(table_id);
     std::vector<Key> &w_table = ws.get_table(table_id);
-    assert(w_table.size() <= 10);
+    // No bound is asserted on the per-table write set: it encoded YCSB's
+    // fixed ten operations per transaction, and a TPC-C NewOrder legitimately
+    // writes up to fifteen Stock rows. The invariant that actually matters,
+    // that a transaction touches each row at most once, is checked below.
     typename std::vector<Key>::iterator w_iter =
         std::find(w_table.begin(), w_table.end(), key);
 
