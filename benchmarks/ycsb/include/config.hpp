@@ -48,6 +48,15 @@ class Config {
         } else if (workload_type == "F100") { // original not ycsb
             // read-modify-write only (NWR applicability floor)
             w.set_workload(0, 0, 100);
+        } else if (workload_type == "B75") { // original not ycsb
+            // all writes, 75% blind / 25% read-modify-write
+            w.set_workload(0, 75, 25);
+        } else if (workload_type == "B50") { // original not ycsb
+            // all writes, 50% blind / 50% read-modify-write
+            w.set_workload(0, 50, 50);
+        } else if (workload_type == "B25") { // original not ycsb
+            // all writes, 25% blind / 75% read-modify-write
+            w.set_workload(0, 25, 75);
         } else if (workload_type == "X") { // original not ycsb
             // write only
             w.set_workload(0, 100, 0);
