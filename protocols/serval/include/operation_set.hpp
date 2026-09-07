@@ -10,6 +10,23 @@
 #define NUM_HOT_KEYS 77  // contended keys targeted by 7 of 10 ops; must be >= 8
 #endif
 
+// Spacing between the contended ("hot") keys. At the default 77 hot keys this
+// is the fixed 131072 of the Caracal workload, which assumes a 10M-row
+// database. With any other NUM_HOT_KEYS the spacing scales to the database.
+inline uint64_t ycsb_hot_spacing(uint64_t num_records) {
+  return (NUM_HOT_KEYS == 77) ? 131072 : num_records / NUM_HOT_KEYS;
+}
+
+// Smallest database the hot-key set fits in. The highest hot key is
+// ycsb_hot_spacing() * (NUM_HOT_KEYS - 1), and every hot key must have been
+// loaded. A smaller database makes the generator emit keys that were never
+// inserted, which surfaces far from its cause as "masstree NOT_FOUND" thrown
+// out of the initialization phase. The scaled spacing is always in range, so
+// only the fixed-131072 default constrains anything.
+inline uint64_t ycsb_min_num_records() {
+  return (NUM_HOT_KEYS == 77) ? 131072ULL * (NUM_HOT_KEYS - 1) + 1 : 1;
+}
+
 class Operation {
  public:
   enum Ope { Read, Update, ReadModifyWrite };
@@ -81,9 +98,7 @@ class OperationSet {
       const Config &c = get_config();
 
       std::vector<int> contented_keys;
-      // preserve legacy spacing (131072) at the default 77 hot keys
-      uint64_t hot_spacing = (NUM_HOT_KEYS == 77)
-          ? 131072 : c.get_num_records() / NUM_HOT_KEYS;
+      uint64_t hot_spacing = ycsb_hot_spacing(c.get_num_records());
       for (int i = 0; i < NUM_HOT_KEYS; i++) {
           contented_keys.emplace_back(hot_spacing * i);
       }

@@ -235,6 +235,19 @@ int main(int argc, const char *argv[]) {
   c.set_contention(skew);
   c.set_reps_per_txn(reps);
 
+  // The workload generator's hot keys are fixed positions in a 10M-row key
+  // space, not a fraction of the database, so too small a database makes it
+  // reference rows that were never loaded. Caught here rather than as a
+  // "masstree NOT_FOUND" thrown from every thread once the run is underway.
+  if (num_records < ycsb_min_num_records()) {
+    printf(
+        "num_records must be at least %lu: the %d hot keys are spaced %lu "
+        "apart, so the highest is %lu and every one of them must be loaded.\n",
+        ycsb_min_num_records(), NUM_HOT_KEYS, ycsb_hot_spacing(num_records),
+        ycsb_hot_spacing(num_records) * (NUM_HOT_KEYS - 1));
+    exit(1);
+  }
+
   printf("Loading all tables with %lu record(s) each with %u bytes\n",
          num_records, PAYLOAD_SIZE);
 
