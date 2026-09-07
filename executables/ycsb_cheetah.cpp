@@ -95,6 +95,7 @@ void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
         assert(rw_set[j]->pending_);
         serval.read(get_id<Record>(), rw_set[j]->index_, rw_set[j]->pending_,
                     rw_set[j]->w_bitmap_);
+        serval.release_read(rw_set[j]->w_bitmap_);
       } else if (rw_set[j]->ope_ == Operation::Ope::Update) {
         serval.write(get_id<Record>(), rw_set[j]->w_bitmap_);
       } else if (rw_set[j]->ope_ == Operation::Ope::ReadModifyWrite) {
@@ -104,6 +105,7 @@ void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
         assert(rw_set[j]->pending_);
         serval.read(get_id<Record>(), rw_set[j]->index_, rw_set[j]->pending_,
                     rw_set[j]->w_bitmap_);
+        serval.release_read(rw_set[j]->w_bitmap_);
         serval.write(get_id<Record>(), rw_set[j]->w_bitmap_);
       }
     }

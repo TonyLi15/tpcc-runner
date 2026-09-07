@@ -134,11 +134,37 @@ class Serval {
     // TODO: Case of found in read or written set
   }
 
+  /*
+  Obtains this reader's visible record. The record is borrowed, not owned: it
+  stays live only until the matching release_read(). The final reader's
+  release collects the epoch's versions (see WriteBitmap::decrement_ref_cnt),
+  freeing the records held by the placeholders and by previous_master_, so a
+  record obtained here must not be touched after its release_read().
+
+  The release is split out of read() to make that contract keepable. read()
+  used to release before returning, so whenever the caller happened to be the
+  final reader it was handed a pointer to a record its own call had just
+  freed. Nothing here dereferences the result -- no TPC-C or YCSB operation
+  in this harness reads a field value -- which is the only reason that was
+  harmless.
+
+  Every read() must be matched by exactly one release_read(). The final
+  writer consults ref_cnt_ to decide whether master_ may be freed at once or
+  must be stashed in previous_master_, so a reference that is never released
+  suppresses collection for that row.
+  */
   const Rec *read([[maybe_unused]] TableID table_id, [[maybe_unused]] Key key,
-                  Version *pending, WriteBitmap *w_bitmap) {
-    Rec *rec = wait_stable_and_execute_read(pending);
+                  Version *pending,
+                  [[maybe_unused]] WriteBitmap *w_bitmap) {
+    return wait_stable_and_execute_read(pending);
+  }
+
+  /*
+  Ends the borrow taken by read(). The final reader collects here, so the
+  record returned by the matching read() is dead once this returns.
+  */
+  void release_read(WriteBitmap *w_bitmap) {
     w_bitmap->decrement_ref_cnt(stat_);
-    return rec;
   }
 
   Rec *write(TableID table_id, WriteBitmap *w_bitmap) {
@@ -147,19 +173,16 @@ class Serval {
 
 #ifdef VALUE_CHECK
   /*
-  Verification build only. read() releases the reference count before it
-  returns, and the final reader's release reclaims the placeholders -- which
-  can include the very version just read. The production path never
-  dereferences the returned pointer, so this is latent there; a value check
-  must copy the payload out while the reference is still held.
+  Verification build only, and the only code here that dereferences a record
+  at all -- so the only code the old read() ordering could actually break.
+  It reads the payload while the borrow is still held, then ends it.
   */
-  uint64_t read_value([[maybe_unused]] TableID table_id,
-                      [[maybe_unused]] Key key, Version *pending,
+  uint64_t read_value(TableID table_id, Key key, Version *pending,
                       WriteBitmap *w_bitmap) {
-    Rec *rec = wait_stable_and_execute_read(pending);
+    const Rec *rec = read(table_id, key, pending, w_bitmap);
     assert(rec);
-    uint64_t v = *reinterpret_cast<const uint64_t *>(rec);  // copy out first
-    w_bitmap->decrement_ref_cnt(stat_);                     // then release
+    uint64_t v = *reinterpret_cast<const uint64_t *>(rec);  // use the borrow
+    release_read(w_bitmap);                                 // then end it
     return v;
   }
 
