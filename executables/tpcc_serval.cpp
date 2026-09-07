@@ -25,6 +25,12 @@
 #include "utils/tsc.hpp"
 #include "utils/utils.hpp"
 
+#ifdef VALUE_CHECK
+#include <unordered_map>
+thread_local std::unordered_map<uint64_t, uint64_t> tl_observed;
+std::vector<std::unordered_map<uint64_t, uint64_t>> g_observed;
+#endif
+
 volatile mrcu_epoch_type active_epoch = 1;
 volatile std::uint64_t globalepoch = 1;
 volatile bool recovering = false;
@@ -95,10 +101,26 @@ void do_execution_phase(uint64_t worker_id, uint64_t head_in_the_epoch,
         // The read must precede the write. search_visible_version resolves
         // strictly below this transaction's serial id, so the read observes
         // the pre-image rather than this transaction's own write.
+#ifdef VALUE_CHECK
+        // Read the predecessor's counter and store one more. If every read
+        // observes the correct pre-image, the values written to a row over
+        // the run are 1, 2, ..., n, so the largest equals the write count.
+        const void *pre = serval.read(rw_set[j]->table_, rw_set[j]->key_);
+        assert(pre);
+        uint64_t v = *reinterpret_cast<const uint64_t *>(pre) + 1;
+        if (rw_set[j]->pending_) {
+          serval.write_value(rw_set[j]->table_, rw_set[j]->pending_, v);
+          uint64_t rowid = (static_cast<uint64_t>(rw_set[j]->table_) << 56) ^
+                           rw_set[j]->key_;
+          uint64_t &seen = tl_observed[rowid];
+          if (v > seen) seen = v;
+        }
+#else
         serval.read(rw_set[j]->table_, rw_set[j]->key_);
         if (rw_set[j]->pending_) {
           serval.write(rw_set[j]->table_, rw_set[j]->pending_);
         }
+#endif
       }
     }
     do_inserts(txs[head_in_the_epoch + (i * NUM_CORE) + worker_id].meta_);
@@ -143,7 +165,12 @@ void run_tx(RendezvousBarrier &rend, [[maybe_unused]] ThreadLocalData &t_data,
   // perf.perf_read(perf_start);
 
   uint64_t epoch = 1;
-  while (epoch <= NUM_EPOCH) {
+#ifdef VALUE_CHECK
+  const uint64_t last_epoch = VALUE_CHECK_EPOCHS;
+#else
+  const uint64_t last_epoch = NUM_EPOCH;
+#endif
+  while (epoch <= last_epoch) {
     serval.epoch_ = epoch;
 
     [[maybe_unused]] uint64_t head_in_the_epoch =
@@ -184,6 +211,9 @@ void run_tx(RendezvousBarrier &rend, [[maybe_unused]] ThreadLocalData &t_data,
   uint64_t exp_end = rdtscp();
   // perf.perf_read(perf_end);
 
+#ifdef VALUE_CHECK
+  g_observed[worker_id] = std::move(tl_observed);
+#endif
   t_data.stat.record(Stat::MeasureType::TotalTime, exp_end - exp_start);
   t_data.stat.record(Stat::MeasureType::InitializationTime, init_total);
   t_data.stat.record(Stat::MeasureType::ExecutionTime, exec_total);
@@ -258,6 +288,9 @@ int main(int argc, const char *argv[]) {
 
   std::vector<std::thread> threads;
   threads.reserve(num_threads);
+#ifdef VALUE_CHECK
+  g_observed.resize(num_threads);
+#endif
 
   std::vector<ThreadLocalData> t_data(num_threads);
 
@@ -273,6 +306,52 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < num_threads; i++) {
     threads[i].join();
   }
+
+#ifdef VALUE_CHECK
+  {
+    // Expected: how many times each row is written over the epochs that ran.
+    std::unordered_map<uint64_t, uint64_t> expect;
+    uint64_t expected_writes = 0;
+    const uint64_t executed = uint64_t(VALUE_CHECK_EPOCHS) * NUM_TXS_IN_ONE_EPOCH;
+    for (uint64_t i = 0; i < executed && i < NUM_ALL_TXS; i++) {
+      for (Operation *op : txs[i].w_set_) {
+        uint64_t rowid = (static_cast<uint64_t>(op->table_) << 56) ^ op->key_;
+        expect[rowid]++;
+        expected_writes++;
+      }
+    }
+    // Observed: the highest value any writer stored to each row.
+    std::unordered_map<uint64_t, uint64_t> observed;
+    for (auto &m : g_observed)
+      for (auto &[row, v] : m) {
+        uint64_t &o = observed[row];
+        if (v > o) o = v;
+      }
+
+    uint64_t rows_bad = 0, missing = 0, extra = 0, observed_sum = 0;
+    for (auto &[row, want] : expect) {
+      auto it = observed.find(row);
+      if (it == observed.end()) { missing++; continue; }
+      observed_sum += it->second;
+      if (it->second != want) rows_bad++;
+    }
+    for (auto &[row, v] : observed) { (void)v; if (!expect.count(row)) extra++; }
+
+    printf("\n=== value check ===\n");
+    printf("epochs executed        : %llu\n", (unsigned long long)VALUE_CHECK_EPOCHS);
+    printf("rows written           : %llu\n", (unsigned long long)expect.size());
+    printf("writes expected        : %llu\n", (unsigned long long)expected_writes);
+    printf("sum of final counters  : %llu\n", (unsigned long long)observed_sum);
+    printf("rows with wrong count  : %llu\n", (unsigned long long)rows_bad);
+    printf("rows never written     : %llu\n", (unsigned long long)missing);
+    printf("rows written unexpected: %llu\n", (unsigned long long)extra);
+    bool ok = (rows_bad == 0 && missing == 0 && extra == 0 &&
+               observed_sum == expected_writes);
+    printf("%s\n", ok ? "PASS  every read observed its correct predecessor"
+                       : "FAIL  the read-modify-write chain is broken");
+    if (!ok) return 1;
+  }
+#endif
 
   Stat stat;
   std::string filepath = stat.prepare_result_file();

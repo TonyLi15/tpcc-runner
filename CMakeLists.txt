@@ -82,6 +82,17 @@ if(SERVAL_MAJOR_GC)
     message(STATUS "SERVAL_MAJOR_GC: ON (separate major GC pass enabled)")
 endif()
 
+# End-to-end value check. Each read-modify-write reads its predecessor's
+# counter and stores one more, so the values written to a row are 1, 2, ..., n
+# iff every read observed the correct pre-image. Verification only: it changes
+# the write path and fixes the epoch count, so never benchmark with it on.
+option(VALUE_CHECK "Verify read-modify-write value chains (not for benchmarking)" OFF)
+set(VALUE_CHECK_EPOCHS "50" CACHE STRING "Epochs to run under VALUE_CHECK")
+if(VALUE_CHECK)
+    add_definitions(-DVALUE_CHECK -DVALUE_CHECK_EPOCHS=${VALUE_CHECK_EPOCHS})
+    message(STATUS "VALUE_CHECK: ON (${VALUE_CHECK_EPOCHS} epochs -- verification build)")
+endif()
+
 option(NO_NWR "Disable the Non-visible Write Rule in Cheetah (ablation)" OFF)
 if(NO_NWR)
     add_definitions(-DNO_NWR)

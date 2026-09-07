@@ -109,6 +109,27 @@ class Caracal {
     return upsert(table_id, pending);
   }
 
+#ifdef VALUE_CHECK
+  /*
+  Verification build only. Identical to upsert() except that the record's
+  first eight bytes are set to `val` before the version is published as
+  STABLE; the production path writes no payload at all and so publishes
+  first, which a reader spinning on the version would observe uninitialized.
+  */
+  Rec *write_value(TableID table_id, Version *pending, uint64_t val) {
+    const Schema &sch = Schema::get_schema();
+    size_t record_size = sch.get_record_size(table_id);
+    assert(record_size >= sizeof(uint64_t));
+
+    Rec *rec = reinterpret_cast<Rec *>(operator new(record_size));
+    *reinterpret_cast<uint64_t *>(rec) = val;
+    __atomic_store_n(&pending->rec, rec, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&pending->status, Version::VersionStatus::STABLE,
+                     __ATOMIC_SEQ_CST);
+    return rec;
+  }
+#endif
+
   Rec *upsert(TableID table_id, Version *pending) {
     const Schema &sch = Schema::get_schema();
     size_t record_size = sch.get_record_size(table_id);

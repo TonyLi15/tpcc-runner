@@ -145,6 +145,51 @@ class Serval {
     return upsert(table_id, w_bitmap);
   }
 
+#ifdef VALUE_CHECK
+  /*
+  Verification build only. read() releases the reference count before it
+  returns, and the final reader's release reclaims the placeholders -- which
+  can include the very version just read. The production path never
+  dereferences the returned pointer, so this is latent there; a value check
+  must copy the payload out while the reference is still held.
+  */
+  uint64_t read_value([[maybe_unused]] TableID table_id,
+                      [[maybe_unused]] Key key, Version *pending,
+                      WriteBitmap *w_bitmap) {
+    Rec *rec = wait_stable_and_execute_read(pending);
+    assert(rec);
+    uint64_t v = *reinterpret_cast<const uint64_t *>(rec);  // copy out first
+    w_bitmap->decrement_ref_cnt(stat_);                     // then release
+    return v;
+  }
+
+  /*
+  Verification build only. Identical to upsert() except that the record's
+  first eight bytes are set to `val` *before* the version is published as
+  STABLE. The production path never writes a payload at all, so it publishes
+  the version first; a reader that spun on it would otherwise observe an
+  uninitialized record and the value chain would break spuriously.
+  Returns false when the Non-visible Write Rule skipped the write, which
+  cannot happen in TPC-C NP because every write is a read-modify-write.
+  */
+  bool write_value(TableID table_id, WriteBitmap *w_bitmap, uint64_t val) {
+    const Schema &sch = Schema::get_schema();
+    size_t record_size = sch.get_record_size(table_id);
+    assert(record_size >= sizeof(uint64_t));
+
+    Version *pending = w_bitmap->identify_write_version(
+        core_, get_tx_serial(serial_id_), stat_);
+    if (!pending) return false;
+
+    Rec *rec = reinterpret_cast<Rec *>(operator new(record_size));
+    *reinterpret_cast<uint64_t *>(rec) = val;
+    __atomic_store_n(&pending->rec, rec, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&pending->status, Version::VersionStatus::STABLE,
+                     __ATOMIC_SEQ_CST);
+    return true;
+  }
+#endif
+
   Rec *upsert(TableID table_id, [[maybe_unused]] WriteBitmap *w_bitmap) {
     const Schema &sch = Schema::get_schema();
     size_t record_size = sch.get_record_size(table_id);

@@ -32,6 +32,11 @@ class Initializer {
   // separately and reclaims each independently, so the two must not alias.
   static void insert_into_index(TableID table_id, Key key, void *rec,
                                 void *rec_master) {
+#ifdef VALUE_CHECK
+    // Both copies start the value chain at zero.
+    *reinterpret_cast<uint64_t *>(rec) = 0;
+    *reinterpret_cast<uint64_t *>(rec_master) = 0;
+#endif
     Value *val = new Value;
     val->initialize();
 

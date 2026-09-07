@@ -30,6 +30,12 @@ class Initializer {
   using Value = typename Index::Value;
 
   static void insert_into_index(TableID table_id, Key key, void *rec) {
+#ifdef VALUE_CHECK
+    // The value check counts read-modify-writes per row in the record's first
+    // eight bytes. No field value is ever read by the protocols, so this is
+    // free to overwrite.
+    *reinterpret_cast<uint64_t *>(rec) = 0;
+#endif
     Value *val = new Value;
     Version *version = new Version;
     version->rec = rec;
