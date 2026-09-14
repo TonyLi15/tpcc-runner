@@ -28,9 +28,22 @@ protocols_tmp/
 *.fdb_latexmk
 *.fls
 
-# Experiment data. The raw per-run output is bulky and stays local; the
-# summary CSVs and the plots the paper is built from are force-added
-# (git add -f) and tracked despite this rule.
+# Experiment data and plots stay local.
 experiments_*/
 write_only_aug21/
 ycsb-A-last-tony/
+
+# Manuscript sources, figures and revision notes are kept outside the repo.
+/*.tex
+/*.pdf
+/*.bib
+/*.diff
+/*.png
+/figs/
+/overleaf_upload/
+/gen_p5.py
+/LOCK_STAT_*.md
+/RESPONSE_TO_REVIEWERS.md
+/REVISION_PACKAGE.md
+/cheetah_noa2_*.md
+/coauthor_comments_addressed.md
